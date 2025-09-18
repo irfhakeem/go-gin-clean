@@ -149,30 +149,34 @@ The server will start on `http://localhost:8080`
 
 - `GET /health` - Server health status
 
-### Authentication
+### Authentication (Public Routes)
 
 - `POST /api/v1/auth/register` - User registration
 - `POST /api/v1/auth/login` - User login (sets refresh token in cookie)
 - `POST /api/v1/auth/refresh-token` - Refresh access token
-- `GET /api/v1/auth/verify-email` - Email verification
+- `POST /api/v1/auth/verify-email` - Email verification
 - `POST /api/v1/auth/send-verify-email` - Send verification email
-- `POST /api/v1/auth/forgot-password` - Send reset password email
+- `POST /api/v1/auth/send-reset-password` - Send reset password email
 - `POST /api/v1/auth/reset-password` - Reset password with token
 
-### Protected Routes (require authentication)
+### Profile Management (Protected Routes)
 
-- `POST /api/v1/auth/logout` - User logout
-- `POST /api/v1/auth/change-password` - Change user password
-- `GET /api/v1/auth/profile` - Get current user profile
+- `GET /api/v1/profile` - Get current user profile
+- `PUT /api/v1/profile` - Update current user profile
+- `POST /api/v1/profile/change-password` - Change user password
+- `POST /api/v1/profile/logout` - User logout
 
-### User Management
+### User Management (Protected Routes)
 
 - `GET /api/v1/users` - Get all users (paginated)
 - `GET /api/v1/users/:id` - Get user by ID
 - `POST /api/v1/users` - Create new user
 - `PUT /api/v1/users/:id` - Update user
 - `DELETE /api/v1/users/:id` - Delete user
-- `POST /api/v1/users/upload-avatar` - Upload user avatar
+
+### Static Assets
+
+- `GET /assets/*` - Serve static files from assets directory
 
 ## 🔧 Available Commands
 
