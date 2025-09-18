@@ -50,19 +50,17 @@ func main() {
 		Handler: router,
 	}
 
-	go func() {
-		log.Printf("Starting server on %s...", cfg.Server.Address())
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("Failed to start server:", err)
-		}
-	}()
+	log.Printf("Starting server on %s...", cfg.Server.Address())
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatal("Failed to start server:", err)
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Server.Timeout)*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
@@ -95,8 +93,8 @@ func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	psqlDB.SetMaxOpenConns(25)
-	psqlDB.SetMaxIdleConns(5)
+	psqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+	psqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
 
 	return db, nil
 }

@@ -3,6 +3,7 @@ package ports
 import (
 	"go-gin-clean/internal/core/domain/entities"
 	"go-gin-clean/internal/core/dto"
+	"mime/multipart"
 	"time"
 )
 
@@ -20,8 +21,10 @@ type BcryptService interface {
 }
 
 type EncryptionService interface {
-	Encrypt(plaintext string) (string, error)
-	Decrypt(ciphertext string) (string, error)
+	EncryptInternal(plaintext string) (string, error)
+	DecryptInternal(ciphertext string) (string, error)
+	EncryptURLSafe(plaintext string) (string, error)
+	DecryptURLSafe(ciphertext string) (string, error)
 }
 
 type MailerService interface {
@@ -29,7 +32,7 @@ type MailerService interface {
 	LoadTemplate(templateName string, data any) (string, error)
 }
 
-type EmailService interface {
-	SendVerifyEmail(to string, name string, token string) error
-	SendResetPasswordEmail(to string, name string, token string) error
+type MediaService interface {
+	UploadFile(fileHeader multipart.FileHeader, filePath string) (*string, error)
+	DeleteFile(filePath string) error
 }

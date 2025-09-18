@@ -5,3 +5,6 @@ tmp/
 docs/
 
 scannerwork/
+
+assets/*
+!assets/.gitkeep

@@ -1,6 +1,9 @@
 package dto
 
-import "go-gin-clean/internal/core/domain/enums"
+import (
+	"go-gin-clean/internal/core/domain/enums"
+	"mime/multipart"
+)
 
 type (
 	UserInfo struct {
@@ -34,7 +37,16 @@ type (
 		RefreshToken string `json:"refresh_token"`
 	}
 
+	SendResetPasswordRequest struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+
 	ResetPasswordRequest struct {
+		Token       string `json:"token" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=8"`
+	}
+
+	SendVerifyEmailRequest struct {
 		Email string `json:"email" binding:"required,email"`
 	}
 
@@ -55,8 +67,8 @@ type (
 	}
 
 	UpdateUserRequest struct {
-		Name   *string       `json:"name,omitempty"`
-		Gender *enums.Gender `json:"gender,omitempty"`
-		Avatar *string       `json:"avatar,omitempty"`
+		Name   *string               `form:"name" binding:"omitempty"`
+		Gender *enums.Gender         `form:"gender" binding:"omitempty"`
+		Avatar *multipart.FileHeader `form:"avatar" binding:"omitempty"`
 	}
 )

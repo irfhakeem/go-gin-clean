@@ -13,20 +13,17 @@ type RefreshToken struct {
 	Audit
 }
 
-func NewRefreshToken(id, userID int64, token string, expiryAt time.Time, isRevoked bool, user User, createdAt, updatedAt time.Time) *RefreshToken {
+func (RefreshToken) TableName() string {
+	return "refresh_tokens"
+}
+
+func NewRefreshToken(userID int64, token string, expiryAt time.Time, isRevoked bool, user User) *RefreshToken {
 	return &RefreshToken{
-		ID:        id,
 		UserID:    userID,
 		Token:     token,
 		ExpiryAt:  expiryAt,
 		IsRevoked: isRevoked,
 		User:      user,
-		Audit: Audit{
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
-			DeletedAt: nil,
-			IsDeleted: false,
-		},
 	}
 }
 

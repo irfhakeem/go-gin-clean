@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"go-gin-clean/internal/core/domain/entities"
 	"go-gin-clean/pkg/config"
 
 	"github.com/joho/godotenv"
@@ -12,32 +13,16 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// Database schema models for migration
-type User struct {
-	ID            int64  `gorm:"primaryKey;autoIncrement"`
-	Name          string `gorm:"not null"`
-	EmailEmail    string `gorm:"column:email_email;uniqueIndex;not null"`
-	PasswordValue string `gorm:"column:password_password;not null"`
-	Avatar        string `gorm:"default:''"`
-	Gender        string `gorm:"type:gender;default:'Unknown';not null"`
-	IsActive      bool   `gorm:"default:true;not null"`
-	CreatedAt     int64  `gorm:"column:created_at;type:bigint;not null"`
-	UpdatedAt     int64  `gorm:"column:updated_at;type:bigint;not null"`
-	DeletedAt     *int64 `gorm:"column:deleted_at;type:bigint"`
-	IsDeleted     bool   `gorm:"column:is_deleted;type:boolean;default:false"`
-}
+var (
+	models = []any{
+		&entities.User{},
+		&entities.RefreshToken{},
+	}
 
-type RefreshToken struct {
-	ID        int64  `gorm:"primaryKey;autoIncrement"`
-	UserID    int64  `gorm:"not null"`
-	Token     string `gorm:"not null;unique"`
-	ExpiryAt  int64  `gorm:"not null;type:bigint"`
-	IsRevoked bool   `gorm:"default:false;not null"`
-	CreatedAt int64  `gorm:"column:created_at;type:bigint;not null"`
-	UpdatedAt int64  `gorm:"column:updated_at;type:bigint;not null"`
-	DeletedAt *int64 `gorm:"column:deleted_at;type:bigint"`
-	IsDeleted bool   `gorm:"column:is_deleted;type:boolean;default:false"`
-}
+	enums = map[string][]string{
+		"gender": {"Male", "Female", "Unknown"},
+	}
+)
 
 func main() {
 	// Load environment variables
@@ -93,22 +78,18 @@ func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 func runMigrations(db *gorm.DB) {
 	log.Println("Running database migrations...")
 
-	// Create enums
-	enums := map[string][]string{
-		"gender": {"Male", "Female", "Unknown"},
-	}
-
 	for name, values := range enums {
 		quotedValues := make([]string, len(values))
 		for i, value := range values {
 			quotedValues[i] = "'" + value + "'"
 		}
-		sql := "CREATE TYPE IF NOT EXISTS " + name + " AS ENUM (" +
-			append([]string{}, quotedValues...)[0]
+		sql := "DO $$ BEGIN " +
+			"IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '" + name + "') THEN " +
+			"CREATE TYPE " + name + " AS ENUM (" + quotedValues[0]
 		for _, v := range quotedValues[1:] {
 			sql += ", " + v
 		}
-		sql += ")"
+		sql += "); END IF; END $$;"
 
 		if err := db.Exec(sql).Error; err != nil {
 			log.Printf("Error creating enum %s: %v", name, err)
@@ -117,8 +98,7 @@ func runMigrations(db *gorm.DB) {
 
 	// Run auto migrations
 	err := db.AutoMigrate(
-		&User{},
-		&RefreshToken{},
+		models...,
 	)
 
 	if err != nil {
@@ -131,20 +111,13 @@ func runMigrations(db *gorm.DB) {
 func runRollback(db *gorm.DB) {
 	log.Println("Running database rollback...")
 
-	models := []interface{}{
-		&User{},
-		&RefreshToken{},
-	}
-
 	for _, model := range models {
 		if err := db.Migrator().DropTable(model); err != nil {
 			log.Printf("Error dropping table %T: %v", model, err)
 		}
 	}
 
-	// Drop enums
-	enums := []string{"gender"}
-	for _, name := range enums {
+	for name := range enums {
 		if err := db.Exec("DROP TYPE IF EXISTS " + name).Error; err != nil {
 			log.Printf("Error dropping enum %s: %v", name, err)
 		}

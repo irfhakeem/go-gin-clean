@@ -1,6 +1,7 @@
 package http
 
 import (
+	"go-gin-clean/internal/adapters/primary/http/handlers"
 	"go-gin-clean/internal/core/ports"
 
 	"github.com/gin-gonic/gin"
@@ -12,7 +13,7 @@ func SetupRoutes(
 	jwtService ports.JWTService,
 ) {
 	// Setup handlers
-	userHandler := NewUserHandler(userUseCase)
+	userHandler := handlers.NewUserHandler(userUseCase)
 	authMiddleware := NewAuthMiddleware(jwtService)
 
 	// Setup CORS
@@ -27,17 +28,27 @@ func SetupRoutes(
 			auth.POST("/login", userHandler.Login)
 			auth.POST("/register", userHandler.Register)
 			auth.POST("/refresh-token", userHandler.RefreshToken)
-			auth.GET("/verify-email", userHandler.VerifyEmail)
+			auth.POST("/verify-email", userHandler.VerifyEmail)
+			auth.POST("/send-verify-email", userHandler.SendVerifyEmail)
+			auth.POST("/reset-password", userHandler.ResetPassword)
+			auth.POST("/send-reset-password", userHandler.SendResetPassword)
 		}
 
 		// Protected routes
+
 		protected := api.Group("")
 		protected.Use(authMiddleware.RequireAuth())
 		{
-			protected.POST("/logout", userHandler.Logout)
-			protected.POST("/change-password", userHandler.ChangePassword)
+			// Profile routes
+			profile := protected.Group("/profile")
+			{
+				profile.GET("", userHandler.Profile)
+				profile.PUT("", userHandler.UpdateProfile)
+				profile.POST("/change-password", userHandler.ChangePassword)
+				profile.POST("/logout", userHandler.Logout)
+			}
 
-			// User management routes (admin/protected)
+			// User management routes (protected)
 			users := protected.Group("/users")
 			{
 				users.GET("", userHandler.GetAllUsers)
@@ -49,10 +60,12 @@ func SetupRoutes(
 		}
 	}
 
+	router.Static("/assets", "./assets")
+
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status":  "healthy",
+			"status":  true,
 			"message": "Server is running",
 		})
 	})

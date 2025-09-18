@@ -1,8 +1,11 @@
 package http
 
 import (
+	"go-gin-clean/internal/adapters/primary/http/messages"
+	"go-gin-clean/internal/adapters/primary/http/response"
 	"go-gin-clean/internal/core/domain/errors"
 	"go-gin-clean/internal/core/ports"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,43 +25,27 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(401, Response{
-				Status:  false,
-				Message: "Authentication required",
-				Error:   errors.ErrAuthHeaderMissing.Error(),
-			})
+			response.Error(c, messages.FAILED_AUTHENTICATION_REQUIRED, errors.ErrAuthHeaderMissing.Error(), http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
 
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			c.JSON(401, Response{
-				Status:  false,
-				Message: "Invalid token format",
-				Error:   errors.ErrTokenInvalid.Error(),
-			})
+			response.Error(c, messages.FAILED_INVALID_TOKEN_FORMAT, errors.ErrAuthHeaderMissing.Error(), http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if token == "" {
-			c.JSON(401, Response{
-				Status:  false,
-				Message: "Token not found",
-				Error:   errors.ErrTokenNotFound.Error(),
-			})
+			response.Error(c, messages.FAILED_TOKEN_NOT_FOUND, errors.ErrTokenNotFound.Error(), http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
 
 		claims, err := m.jwtService.ValidateAccessToken(token)
 		if err != nil {
-			c.JSON(401, Response{
-				Status:  false,
-				Message: "Invalid token",
-				Error:   errors.ErrTokenInvalid.Error(),
-			})
+			response.Error(c, messages.FAILED_INVALID_TOKEN_FORMAT, errors.ErrTokenInvalid.Error(), http.StatusUnauthorized)
 			c.Abort()
 			return
 		}

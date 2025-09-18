@@ -2,33 +2,57 @@ package usecases
 
 import (
 	"context"
+	"fmt"
 	"go-gin-clean/internal/core/domain/entities"
+	"go-gin-clean/internal/core/domain/enums"
 	"go-gin-clean/internal/core/domain/errors"
-	vo "go-gin-clean/internal/core/domain/valueobjects"
 	"go-gin-clean/internal/core/dto"
 	"go-gin-clean/internal/core/ports"
+	"go-gin-clean/pkg/config"
+	"log"
+	"strconv"
+	"strings"
 	"time"
 )
 
 type UserUseCase struct {
-	userRepo         ports.UserRepository
-	refreshTokenRepo ports.RefreshTokenRepository
-	jwtService       ports.JWTService
-	bcryptService    ports.BcryptService
-	emailService     ports.EmailService
+	userRepo            ports.UserRepository
+	email               ports.EmailUseCase
+	refreshTokenRepo    ports.RefreshTokenRepository
+	jwtService          ports.JWTService
+	bcryptService       ports.BcryptService
+	aesService          ports.EncryptionService
+	localStorageService ports.MediaService
 }
 
 func NewUserUseCase(
 	userRepo ports.UserRepository,
+	email ports.EmailUseCase,
 	refreshTokenRepo ports.RefreshTokenRepository,
 	jwtService ports.JWTService,
 	bcryptService ports.BcryptService,
+	aesService ports.EncryptionService,
+	localStorageService ports.MediaService,
 ) ports.UserUseCase {
 	return &UserUseCase{
-		userRepo:         userRepo,
-		refreshTokenRepo: refreshTokenRepo,
-		jwtService:       jwtService,
-		bcryptService:    bcryptService,
+		userRepo:            userRepo,
+		email:               email,
+		refreshTokenRepo:    refreshTokenRepo,
+		jwtService:          jwtService,
+		bcryptService:       bcryptService,
+		aesService:          aesService,
+		localStorageService: localStorageService,
+	}
+}
+
+func FormatUserInfo(user *entities.User) *dto.UserInfo {
+	return &dto.UserInfo{
+		ID:       user.ID,
+		Name:     user.Name,
+		Email:    user.Email,
+		Gender:   user.Gender,
+		Avatar:   user.Avatar,
+		IsActive: user.IsActive,
 	}
 }
 
@@ -42,7 +66,7 @@ func (uc *UserUseCase) Login(ctx context.Context, req *dto.LoginRequest) (*dto.L
 		return nil, errors.ErrUserNotFound
 	}
 
-	if err := uc.bcryptService.ValidatePassword(req.Password, user.Password.Value()); err != nil {
+	if err := uc.bcryptService.ValidatePassword(req.Password, user.Password); err != nil {
 		return nil, errors.ErrPasswordNotMatch
 	}
 
@@ -56,29 +80,21 @@ func (uc *UserUseCase) Login(ctx context.Context, req *dto.LoginRequest) (*dto.L
 		return nil, err
 	}
 
-	token := &entities.RefreshToken{
-		UserID:   user.ID,
-		Token:    refreshToken,
-		ExpiryAt: expiryAt,
+	hashedRefreshToken, err := uc.aesService.EncryptInternal(refreshToken)
+	if err != nil {
+		return nil, err
 	}
+
+	token := entities.NewRefreshToken(user.ID, hashedRefreshToken, expiryAt, false, *user)
 
 	if err := uc.refreshTokenRepo.Save(ctx, token); err != nil {
 		return nil, err
 	}
 
-	userInfo := dto.UserInfo{
-		ID:       user.ID,
-		Name:     user.Name,
-		Email:    user.Email.Value(),
-		Avatar:   user.Avatar,
-		Gender:   user.Gender,
-		IsActive: user.IsActive,
-	}
-
 	return &dto.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		User:         userInfo,
+		User:         *FormatUserInfo(user),
 	}, nil
 }
 
@@ -92,24 +108,9 @@ func (uc *UserUseCase) Register(ctx context.Context, req *dto.RegisterRequest) e
 		return err
 	}
 
-	email, err := vo.NewEmailAddress(req.Email)
+	user, err := entities.NewUser(req.Name, req.Email, hashedPassword, "", enums.Unknown)
 	if err != nil {
 		return err
-	}
-
-	password, err := vo.NewPassword(hashedPassword)
-	if err != nil {
-		return err
-	}
-
-	user := &entities.User{
-		Name:     req.Name,
-		Email:    email,
-		Password: password,
-		Audit: entities.Audit{
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		},
 	}
 
 	savedUser, err := uc.userRepo.Create(ctx, user)
@@ -117,7 +118,22 @@ func (uc *UserUseCase) Register(ctx context.Context, req *dto.RegisterRequest) e
 		return err
 	}
 
-	return uc.SendVerifyEmail(ctx, savedUser.Email.Value())
+	plainText := fmt.Sprintf("%d_%s", savedUser.ID, time.Now().Add(24*time.Hour).Format(time.RFC3339))
+
+	token, err := uc.aesService.EncryptURLSafe(plainText)
+	if err != nil {
+		return err
+	}
+
+	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
+
+	go func() {
+		if err := uc.email.SendVerifyEmail(user.Email, user.Name, verificationURL); err != nil {
+			log.Printf("Failed to send verification email to %s: %v", user.Email, err)
+		}
+	}()
+
+	return nil
 }
 
 func (uc *UserUseCase) RefreshToken(ctx context.Context, refreshToken string) (*dto.RefreshTokenResponse, error) {
@@ -149,11 +165,12 @@ func (uc *UserUseCase) RefreshToken(ctx context.Context, refreshToken string) (*
 		return nil, err
 	}
 
-	token := &entities.RefreshToken{
-		UserID:   user.ID,
-		Token:    newRefreshToken,
-		ExpiryAt: expiryAt,
+	hashedRefreshToken, err := uc.aesService.EncryptInternal(newRefreshToken)
+	if err != nil {
+		return nil, err
 	}
+
+	token := entities.NewRefreshToken(user.ID, hashedRefreshToken, expiryAt, false, *user)
 
 	if err := uc.refreshTokenRepo.Save(ctx, token); err != nil {
 		return nil, err
@@ -170,18 +187,36 @@ func (uc *UserUseCase) Logout(ctx context.Context, userID int64) error {
 }
 
 func (uc *UserUseCase) VerifyEmail(ctx context.Context, token string) error {
-	claims, err := uc.jwtService.ValidateAccessToken(token)
+	token, err := uc.aesService.DecryptURLSafe(token)
 	if err != nil {
 		return errors.ErrTokenInvalid
 	}
 
-	user, err := uc.userRepo.FindByID(ctx, claims.UserID)
+	payloads := strings.Split(token, "_")
+	if len(payloads) != 2 {
+		return errors.ErrTokenInvalid
+	}
+
+	expiryAt, err := time.Parse(time.RFC3339, payloads[1])
+	if err != nil {
+		return errors.ErrTokenInvalid
+	}
+
+	if time.Now().After(expiryAt) {
+		return errors.ErrTokenExpired
+	}
+
+	userID, err := strconv.ParseInt(payloads[0], 10, 64)
+	if err != nil {
+		return errors.ErrInvalidIDFormat
+	}
+
+	user, err := uc.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return errors.ErrUserNotFound
 	}
 
 	user.Activate()
-	user.UpdateTimestamp()
 
 	_, err = uc.userRepo.Update(ctx, user)
 	return err
@@ -193,12 +228,22 @@ func (uc *UserUseCase) SendVerifyEmail(ctx context.Context, email string) error 
 		return errors.ErrUserNotFound
 	}
 
-	token, _, err := uc.jwtService.GenerateAccessToken(user)
+	plainText := fmt.Sprintf("%d_%s", user.ID, time.Now().Add(24*time.Hour).Format(time.RFC3339))
+
+	token, err := uc.aesService.EncryptURLSafe(plainText)
 	if err != nil {
 		return err
 	}
 
-	return uc.emailService.SendVerifyEmail(user.Email.Value(), user.Name, token)
+	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
+
+	go func() {
+		if err := uc.email.SendVerifyEmail(user.Email, user.Name, verificationURL); err != nil {
+			log.Printf("Failed to send verification email to %s: %v", user.Email, err)
+		}
+	}()
+
+	return nil
 }
 
 func (uc *UserUseCase) SendResetPassword(ctx context.Context, email string) error {
@@ -207,21 +252,51 @@ func (uc *UserUseCase) SendResetPassword(ctx context.Context, email string) erro
 		return errors.ErrUserNotFound
 	}
 
-	token, _, err := uc.jwtService.GenerateAccessToken(user)
+	plainText := fmt.Sprintf("%s_%s", user.Email, time.Now().Add(1*time.Hour).Format(time.RFC3339))
+
+	token, err := uc.aesService.EncryptURLSafe(plainText)
 	if err != nil {
 		return err
 	}
 
-	return uc.emailService.SendResetPasswordEmail(user.Email.Value(), user.Name, token)
+	resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.GetAppURL(), token)
+
+	go func() {
+		if err := uc.email.SendResetPasswordEmail(user.Email, user.Name, resetURL); err != nil {
+			log.Printf("Failed to send password reset email to %s: %v", user.Email, err)
+		}
+	}()
+
+	return nil
 }
 
 func (uc *UserUseCase) ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error {
-	user, err := uc.userRepo.FindByEmail(ctx, req.Email)
+	paylaod, err := uc.aesService.DecryptURLSafe(req.Token)
+	if err != nil {
+		return errors.ErrTokenInvalid
+	}
+
+	parts := strings.Split(paylaod, "_")
+	if len(parts) != 2 {
+		return errors.ErrTokenInvalid
+	}
+
+	email := parts[0]
+	expiryAt, err := time.Parse(time.RFC3339, parts[1])
+	if err != nil {
+		return errors.ErrTokenInvalid
+	}
+
+	if time.Now().After(expiryAt) {
+		return errors.ErrTokenExpired
+	}
+
+	user, err := uc.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		return errors.ErrUserNotFound
 	}
 
-	hashedPassword, err := uc.bcryptService.HashPassword("temporary_password")
+	hashedPassword, err := uc.bcryptService.HashPassword(req.NewPassword)
 	if err != nil {
 		return err
 	}
@@ -230,7 +305,6 @@ func (uc *UserUseCase) ResetPassword(ctx context.Context, req *dto.ResetPassword
 		return err
 	}
 
-	user.UpdateTimestamp()
 	_, err = uc.userRepo.Update(ctx, user)
 	return err
 }
@@ -244,14 +318,7 @@ func (uc *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, sear
 
 	userInfos := make([]dto.UserInfo, len(users))
 	for i, user := range users {
-		userInfos[i] = dto.UserInfo{
-			ID:       user.ID,
-			Name:     user.Name,
-			Email:    user.Email.Value(),
-			Avatar:   user.Avatar,
-			Gender:   user.Gender,
-			IsActive: user.IsActive,
-		}
+		userInfos[i] = *FormatUserInfo(user)
 	}
 
 	return dto.NewPaginationResponse(userInfos, page, pageSize, int(total)), nil
@@ -263,14 +330,7 @@ func (uc *UserUseCase) GetUserByID(ctx context.Context, userID int64) (*dto.User
 		return nil, errors.ErrUserNotFound
 	}
 
-	return &dto.UserInfo{
-		ID:       user.ID,
-		Name:     user.Name,
-		Email:    user.Email.Value(),
-		Avatar:   user.Avatar,
-		Gender:   user.Gender,
-		IsActive: user.IsActive,
-	}, nil
+	return FormatUserInfo(user), nil
 }
 
 func (uc *UserUseCase) CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserInfo, error) {
@@ -283,41 +343,19 @@ func (uc *UserUseCase) CreateUser(ctx context.Context, req *dto.CreateUserReques
 		return nil, err
 	}
 
-	email, err := vo.NewEmailAddress(req.Email)
+	user, err := entities.NewUser(req.Name, req.Email, hashedPassword, "", enums.Unknown)
 	if err != nil {
 		return nil, err
 	}
 
-	password, err := vo.NewPassword(hashedPassword)
-	if err != nil {
-		return nil, err
-	}
-
-	user := &entities.User{
-		Name:     req.Name,
-		Email:    email,
-		Password: password,
-		Gender:   req.Gender,
-		IsActive: true,
-		Audit: entities.Audit{
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		},
-	}
+	user.IsActive = true
 
 	savedUser, err := uc.userRepo.Create(ctx, user)
 	if err != nil {
 		return nil, err
 	}
 
-	return &dto.UserInfo{
-		ID:       savedUser.ID,
-		Name:     savedUser.Name,
-		Email:    savedUser.Email.Value(),
-		Avatar:   savedUser.Avatar,
-		Gender:   savedUser.Gender,
-		IsActive: savedUser.IsActive,
-	}, nil
+	return FormatUserInfo(savedUser), nil
 }
 
 func (uc *UserUseCase) UpdateUser(ctx context.Context, userID int64, req *dto.UpdateUserRequest) (*dto.UserInfo, error) {
@@ -331,28 +369,26 @@ func (uc *UserUseCase) UpdateUser(ctx context.Context, userID int64, req *dto.Up
 	}
 
 	if req.Avatar != nil {
-		user.Avatar = *req.Avatar
+		path := fmt.Sprintf("avatars/user_%d/", user.ID)
+
+		filePath, err := uc.localStorageService.UploadFile(*req.Avatar, path)
+		if err != nil {
+			return nil, err
+		}
+
+		user.Avatar = *filePath
 	}
 
 	if req.Gender != nil {
 		user.Gender = *req.Gender
 	}
 
-	user.UpdateTimestamp()
-
 	updatedUser, err := uc.userRepo.Update(ctx, user)
 	if err != nil {
 		return nil, err
 	}
 
-	return &dto.UserInfo{
-		ID:       updatedUser.ID,
-		Name:     updatedUser.Name,
-		Email:    updatedUser.Email.Value(),
-		Avatar:   updatedUser.Avatar,
-		Gender:   updatedUser.Gender,
-		IsActive: updatedUser.IsActive,
-	}, nil
+	return FormatUserInfo(updatedUser), nil
 }
 
 func (uc *UserUseCase) ChangePassword(ctx context.Context, userID int64, req *dto.ChangePasswordRequest) error {
@@ -361,7 +397,7 @@ func (uc *UserUseCase) ChangePassword(ctx context.Context, userID int64, req *dt
 		return errors.ErrUserNotFound
 	}
 
-	if err := uc.bcryptService.ValidatePassword(req.OldPassword, user.Password.Value()); err != nil {
+	if err := uc.bcryptService.ValidatePassword(req.OldPassword, user.Password); err != nil {
 		return errors.ErrPasswordNotMatch
 	}
 
@@ -374,7 +410,6 @@ func (uc *UserUseCase) ChangePassword(ctx context.Context, userID int64, req *dt
 		return err
 	}
 
-	user.UpdateTimestamp()
 	_, err = uc.userRepo.Update(ctx, user)
 	return err
 }

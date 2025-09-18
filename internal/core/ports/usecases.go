@@ -22,3 +22,8 @@ type UserUseCase interface {
 	ChangePassword(ctx context.Context, userID int64, req *dto.ChangePasswordRequest) error
 	DeleteUser(ctx context.Context, userID int64) error
 }
+
+type EmailUseCase interface {
+	SendVerifyEmail(toEmail, toName, verifyToken string) error
+	SendResetPasswordEmail(toEmail, toName, resetToken string) error
+}

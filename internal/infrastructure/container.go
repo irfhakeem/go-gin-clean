@@ -2,6 +2,8 @@ package infrastructure
 
 import (
 	"go-gin-clean/internal/adapters/secondary/database"
+	"go-gin-clean/internal/adapters/secondary/mailer"
+	"go-gin-clean/internal/adapters/secondary/media"
 	"go-gin-clean/internal/adapters/secondary/security"
 	"go-gin-clean/internal/core/ports"
 	"go-gin-clean/internal/core/usecases"
@@ -11,8 +13,10 @@ import (
 )
 
 type Container struct {
-	UserUseCase ports.UserUseCase
-	JWTService  ports.JWTService
+	UserUseCase   ports.UserUseCase
+	EmailUseCase  ports.EmailUseCase
+	JWTService    ports.JWTService
+	MailerService ports.MailerService
 }
 
 func NewContainer(db *gorm.DB, cfg *config.Config) *Container {
@@ -22,18 +26,18 @@ func NewContainer(db *gorm.DB, cfg *config.Config) *Container {
 
 	// Init services
 	jwtService := security.NewJWTService(&cfg.JWT)
-	passwordService := security.NewBcryptService()
+	bcryptService := security.NewBcryptService()
+	aesService := security.NewAESService(&cfg.AES)
+	smtpService := mailer.NewSMTPService(&cfg.Mailer)
+	localStorageService := media.NewLocalStorageService()
 
 	// Init use cases
-	userUseCase := usecases.NewUserUseCase(
-		userRepo,
-		refreshTokenRepo,
-		jwtService,
-		passwordService,
-	)
+	emailUseCase := usecases.NewEmailUseCase(smtpService)
+	userUseCase := usecases.NewUserUseCase(userRepo, emailUseCase, refreshTokenRepo, jwtService, bcryptService, aesService, localStorageService)
 
 	return &Container{
-		UserUseCase: userUseCase,
-		JWTService:  jwtService,
+		UserUseCase:  userUseCase,
+		EmailUseCase: emailUseCase,
+		JWTService:   jwtService,
 	}
 }

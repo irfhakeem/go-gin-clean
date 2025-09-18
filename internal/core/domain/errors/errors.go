@@ -14,6 +14,9 @@ var (
 	ErrInvalidClaims           = errors.New("invalid claims in token")
 	ErrInvalidIDFormat         = errors.New("invalid ID format")
 	ErrUnexpectedSigningMethod = errors.New("unexpected signing method")
+	ErrCreateFileSpace         = errors.New("failed to create file space")
+	ErrUploadFile              = errors.New("failed to upload file")
+	ErrDeleteFile              = errors.New("failed to delete file")
 )
 
 // Domain errors

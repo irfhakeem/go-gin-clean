@@ -26,7 +26,7 @@ func (j *JWTService) GenerateAccessToken(user *entities.User) (string, time.Time
 
 	claims := jwt.MapClaims{
 		"user_id":    user.ID,
-		"email":      user.Email.Value(),
+		"email":      user.Email,
 		"token_type": "access",
 		"exp":        expiryAt.Unix(),
 		"iat":        now.Unix(),
