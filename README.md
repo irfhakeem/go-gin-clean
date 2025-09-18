@@ -41,19 +41,30 @@ go-gin-clean/
 ├── internal/                    # Private application code
 │   ├── core/                    # Core business logic (innermost layer)
 │   │   ├── domain/              # Enterprise business rules
-│   │   │   ├── entities/        # Business entities
-│   │   │   ├── valueobjects/    # Value objects
-│   │   │   ├── enums/           # Enumerations
+│   │   │   ├── entities/        # Business entities (User, RefreshToken, Audit)
+│   │   │   ├── enums/           # Enumerations (Gender)
 │   │   │   └── errors/          # Domain errors
 │   │   ├── dto/                 # Data Transfer Objects
 │   │   ├── ports/               # Interfaces (contracts)
 │   │   └── usecases/            # Application business rules
+│   │       ├── user_usecase.go  # User business logic
+│   │       └── email_usecase.go # Email business logic
 │   ├── adapters/                # Adapters for external interfaces
-│   │   ├── primary/http/        # HTTP handlers, routes, middleware
-│   │   └── secondary/           # Database, security, email implementations
+│   │   ├── primary/http/        # HTTP layer
+│   │   │   ├── handlers/        # HTTP handlers
+│   │   │   ├── messages/        # Response messages
+│   │   │   ├── response/        # Response utilities
+│   │   │   ├── middleware.go    # Authentication middleware
+│   │   │   └── routes.go        # Route definitions
+│   │   └── secondary/           # External service implementations
+│   │       ├── database/        # Database repositories
+│   │       ├── security/        # JWT, Bcrypt, AES services
+│   │       ├── mailer/          # SMTP email service
+│   │       └── media/           # Local storage service
 │   └── infrastructure/          # Infrastructure concerns
+│       └── container.go         # Dependency injection
 └── pkg/                         # Public libraries
-    ├── config/                  # Configuration
+    ├── config/                  # Configuration management
     └── utils/                   # Utility functions
 ```
 
@@ -88,6 +99,8 @@ go-gin-clean/
    SERVER_HOST=localhost
    SERVER_PORT=8080
    ENVIRONMENT=development
+   APP_FE_URL=
+   TIMEOUT=30
 
    # Database
    DB_HOST=localhost
@@ -95,12 +108,26 @@ go-gin-clean/
    DB_USERNAME=postgres
    DB_PASSWORD=your_password
    DB_NAME=go_gin_clean
+   DB_MAX_IDLE_CONNS=25
+   DB_MAX_OPEN_CONNS=5
 
    # JWT
+   JWT_ISSUER=go-gin-clean
    JWT_ACCESS_SECRET=your-access-secret-key
    JWT_REFRESH_SECRET=your-refresh-secret-key
    JWT_ACCESS_EXPIRY=1h
    JWT_REFRESH_EXPIRY=168h
+
+   # AES Encryption
+   AES_KEY=your-32-character-encryption-key
+   AES_IV=your-16-character-iv-key
+
+   # SMTP Email (optional)
+   MAILER_HOST=smtp.gmail.com
+   MAILER_PORT=587
+   MAILER_SENDER=your-email@gmail.com
+   MAILER_AUTH=your-email@gmail.com
+   MAILER_PASSWORD=your-app-password
    ```
 
 4. **Database migration**
@@ -125,14 +152,18 @@ The server will start on `http://localhost:8080`
 ### Authentication
 
 - `POST /api/v1/auth/register` - User registration
-- `POST /api/v1/auth/login` - User login
+- `POST /api/v1/auth/login` - User login (sets refresh token in cookie)
 - `POST /api/v1/auth/refresh-token` - Refresh access token
 - `GET /api/v1/auth/verify-email` - Email verification
+- `POST /api/v1/auth/send-verify-email` - Send verification email
+- `POST /api/v1/auth/forgot-password` - Send reset password email
+- `POST /api/v1/auth/reset-password` - Reset password with token
 
 ### Protected Routes (require authentication)
 
-- `POST /api/v1/logout` - User logout
-- `POST /api/v1/change-password` - Change user password
+- `POST /api/v1/auth/logout` - User logout
+- `POST /api/v1/auth/change-password` - Change user password
+- `GET /api/v1/auth/profile` - Get current user profile
 
 ### User Management
 
@@ -141,6 +172,7 @@ The server will start on `http://localhost:8080`
 - `POST /api/v1/users` - Create new user
 - `PUT /api/v1/users/:id` - Update user
 - `DELETE /api/v1/users/:id` - Delete user
+- `POST /api/v1/users/upload-avatar` - Upload user avatar
 
 ## 🔧 Available Commands
 
@@ -211,21 +243,59 @@ The architecture makes testing straightforward:
 func TestUserUseCase_Login(t *testing.T) {
     // Arrange
     mockUserRepo := &mocks.UserRepository{}
+    mockRefreshTokenRepo := &mocks.RefreshTokenRepository{}
     mockJWTService := &mocks.JWTService{}
+    mockPasswordService := &mocks.PasswordService{}
+    mockEmailUseCase := &mocks.EmailUseCase{}
 
-    useCase := usecases.NewUserUseCase(mockUserRepo, nil, mockJWTService, nil, nil)
+    useCase := usecases.NewUserUseCase(
+        mockUserRepo,
+        mockRefreshTokenRepo,
+        mockJWTService,
+        mockPasswordService,
+        mockEmailUseCase,
+    )
 
     // Act & Assert
     // Test your business logic
 }
 ```
 
+## 🔐 Security Features
+
+### Password Security
+
+- **Bcrypt Hashing**: Industry-standard password hashing
+- **Salt Generation**: Automatic salt generation for each password
+- **Cost Factor**: Configurable cost factor for security vs performance
+
+### JWT Security
+
+- **HMAC Signing**: Secure token signing with secret keys
+- **Token Expiration**: Configurable expiration times
+- **Refresh Rotation**: Secure refresh token rotation
+
+### Data Encryption
+
+- **AES Encryption**: Additional data encryption capabilities
+- **Configurable Keys**: Environment-based encryption keys
+- **PKCS7 Padding**: Standard padding for block cipher
+
 ## 🔒 Authentication
 
-The application uses JWT-based authentication:
+The application uses JWT-based authentication with the following features:
 
 - **Access Token**: Short-lived token for API requests (1 hour)
-- **Refresh Token**: Long-lived token for obtaining new access tokens (7 days)
+- **Refresh Token**: Long-lived token stored in HTTP-only cookie (7 days)
+- **Password Hashing**: Bcrypt for secure password storage
+- **AES Encryption**: Additional data encryption capabilities
+
+### Authentication Flow
+
+1. **Login**: User provides email/password, receives access token and refresh token (in cookie)
+2. **API Requests**: Include access token in Authorization header
+3. **Token Refresh**: Automatic refresh using HTTP-only cookie
+4. **Logout**: Clears refresh token and invalidates session
 
 Include the access token in requests:
 
@@ -233,22 +303,54 @@ Include the access token in requests:
 Authorization: Bearer <access_token>
 ```
 
+## 📧 Email Features
+
+The application includes comprehensive email functionality:
+
+- **Email Verification**: Send verification emails to new users
+- **Password Reset**: Send password reset emails with secure tokens
+- **Template System**: HTML email templates with dynamic data
+- **SMTP Integration**: Configurable SMTP service for email delivery
+
+## 📁 File Upload
+
+Local file storage implementation:
+
+- **Avatar Upload**: Users can upload profile pictures
+- **Local Storage**: Files stored in local filesystem
+- **File Validation**: Type and size validation
+- **Secure Paths**: Protected file path handling
+
 ## 🛠️ Development Guidelines
 
 ### Adding New Features
 
 1. **Start with Domain**: Define entities, value objects, and domain rules
-2. **Define Ports**: Create interfaces for new repositories or services
-3. **Implement Use Cases**: Add business logic in use cases
-4. **Create Adapters**: Implement interfaces in appropriate adapters
-5. **Wire Dependencies**: Update container for dependency injection
+2. **Define Ports**: Create interfaces for new repositories or services in `internal/core/ports/`
+3. **Implement Use Cases**: Add business logic in `internal/core/usecases/`
+4. **Create Adapters**: Implement interfaces in `internal/adapters/secondary/`
+5. **Add HTTP Layer**: Create handlers in `internal/adapters/primary/http/handlers/`
+6. **Wire Dependencies**: Update `internal/infrastructure/container.go`
+7. **Update Routes**: Add new routes in `internal/adapters/primary/http/routes.go`
 
 ### Error Handling
 
 - Domain errors defined in `internal/core/domain/errors/`
-- Use meaningful error messages
-- Propagate errors up through layers
-- Handle errors appropriately in adapters
+- Structured error responses with consistent format
+- Proper HTTP status codes for different error types
+- Error messages managed in `internal/adapters/primary/http/messages/`
+
+### Service Implementations
+
+**Current Services:**
+
+- **UserUseCase**: User registration, login, profile management
+- **EmailUseCase**: Email verification and password reset
+- **JWTService**: Token generation and validation
+- **PasswordService**: Bcrypt password hashing
+- **EncryptionService**: AES encryption/decryption
+- **MailerService**: SMTP email sending with templates
+- **MediaService**: Local file storage and upload
 
 ## 📈 Performance & Production
 
@@ -274,5 +376,37 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/server .
+COPY --from=builder /app/templates ./templates
 CMD ["./server"]
 ```
+
+## 🌟 Features
+
+### Core Features
+
+- ✅ User Registration and Authentication
+- ✅ JWT Token-based Authentication with Refresh Tokens
+- ✅ Email Verification System
+- ✅ Password Reset Functionality
+- ✅ User Profile Management
+- ✅ File Upload (Avatar)
+- ✅ Pagination Support
+- ✅ CORS Configuration
+- ✅ Middleware Authentication
+
+### Security Features
+
+- ✅ Bcrypt Password Hashing
+- ✅ JWT Token Security
+- ✅ AES Data Encryption
+- ✅ HTTP-Only Cookie for Refresh Tokens
+- ✅ Input Validation and Sanitization
+
+### Infrastructure Features
+
+- ✅ Database Migration System
+- ✅ Configuration Management
+- ✅ SMTP Email Integration
+- ✅ Local File Storage
+- ✅ Structured Logging
+- ✅ Graceful Shutdown
