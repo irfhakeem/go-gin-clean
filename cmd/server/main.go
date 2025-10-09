@@ -50,13 +50,16 @@ func main() {
 		Handler: router,
 	}
 
-	log.Printf("Starting server on %s...", cfg.Server.Address())
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal("Failed to start server:", err)
-	}
-
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("Starting server on %s...", cfg.Server.Address())
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal("Failed to start server:", err)
+		}
+	}()
+
 	<-quit
 	log.Println("Shutting down server...")
 
