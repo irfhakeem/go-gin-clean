@@ -103,7 +103,7 @@ func (c *DatabaseConfig) DSN() string {
 }
 
 func GetAppURL() string {
-	return getEnv("APP_FE_URL", "http://localhost:5000")
+	return getEnv("APP_URL", "http://localhost:5000")
 }
 
 // Helper
