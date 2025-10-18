@@ -2,6 +2,7 @@ package http
 
 import (
 	"go-gin-clean/internal/adapters/primary/http/handlers"
+	"go-gin-clean/internal/adapters/primary/http/mappers"
 	"go-gin-clean/internal/core/ports"
 
 	"github.com/gin-gonic/gin"
@@ -12,8 +13,11 @@ func SetupRoutes(
 	userUseCase ports.UserUseCase,
 	jwtService ports.JWTService,
 ) {
+	// Setup mappers
+	userMapper := mappers.NewUserMapper()
+
 	// Setup handlers
-	userHandler := handlers.NewUserHandler(userUseCase)
+	userHandler := handlers.NewUserHandler(userUseCase, userMapper)
 	authMiddleware := NewAuthMiddleware(jwtService)
 
 	// Setup CORS

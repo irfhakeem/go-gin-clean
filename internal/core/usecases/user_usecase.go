@@ -3,10 +3,10 @@ package usecases
 import (
 	"context"
 	"fmt"
+	"go-gin-clean/internal/core/contracts"
 	"go-gin-clean/internal/core/domain/entities"
 	"go-gin-clean/internal/core/domain/enums"
 	"go-gin-clean/internal/core/domain/errors"
-	"go-gin-clean/internal/core/dto"
 	"go-gin-clean/internal/core/ports"
 	"go-gin-clean/pkg/config"
 	"log"
@@ -45,8 +45,8 @@ func NewUserUseCase(
 	}
 }
 
-func FormatUserInfo(user *entities.User) *dto.UserInfo {
-	return &dto.UserInfo{
+func FormatUserInfo(user *entities.User) *contracts.UserInfo {
+	return &contracts.UserInfo{
 		ID:       user.ID,
 		Name:     user.Name,
 		Email:    user.Email,
@@ -56,7 +56,7 @@ func FormatUserInfo(user *entities.User) *dto.UserInfo {
 	}
 }
 
-func (uc *UserUseCase) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error) {
+func (uc *UserUseCase) Login(ctx context.Context, req *contracts.LoginRequest) (*contracts.LoginResponse, error) {
 	user, err := uc.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, errors.ErrUserNotFound
@@ -91,14 +91,14 @@ func (uc *UserUseCase) Login(ctx context.Context, req *dto.LoginRequest) (*dto.L
 		return nil, err
 	}
 
-	return &dto.LoginResponse{
+	return &contracts.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User:         *FormatUserInfo(user),
 	}, nil
 }
 
-func (uc *UserUseCase) Register(ctx context.Context, req *dto.RegisterRequest) error {
+func (uc *UserUseCase) Register(ctx context.Context, req *contracts.RegisterRequest) error {
 	if uc.userRepo.ExistsByEmail(ctx, req.Email) {
 		return errors.ErrEmailAlreadyExists
 	}
@@ -136,7 +136,7 @@ func (uc *UserUseCase) Register(ctx context.Context, req *dto.RegisterRequest) e
 	return nil
 }
 
-func (uc *UserUseCase) RefreshToken(ctx context.Context, refreshToken string) (*dto.RefreshTokenResponse, error) {
+func (uc *UserUseCase) RefreshToken(ctx context.Context, refreshToken string) (*contracts.RefreshTokenResponse, error) {
 	claims, err := uc.jwtService.ValidateRefreshToken(refreshToken)
 	if err != nil {
 		return nil, errors.ErrTokenInvalid
@@ -176,7 +176,7 @@ func (uc *UserUseCase) RefreshToken(ctx context.Context, refreshToken string) (*
 		return nil, err
 	}
 
-	return &dto.RefreshTokenResponse{
+	return &contracts.RefreshTokenResponse{
 		AccessToken:  newAccessToken,
 		RefreshToken: newRefreshToken,
 	}, nil
@@ -270,7 +270,7 @@ func (uc *UserUseCase) SendResetPassword(ctx context.Context, email string) erro
 	return nil
 }
 
-func (uc *UserUseCase) ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error {
+func (uc *UserUseCase) ResetPassword(ctx context.Context, req *contracts.ResetPasswordRequest) error {
 	paylaod, err := uc.aesService.DecryptURLSafe(req.Token)
 	if err != nil {
 		return errors.ErrTokenInvalid
@@ -309,22 +309,22 @@ func (uc *UserUseCase) ResetPassword(ctx context.Context, req *dto.ResetPassword
 	return err
 }
 
-func (uc *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, search string) (*dto.PaginationResponse[dto.UserInfo], error) {
-	offset := dto.Offset(page, pageSize)
+func (uc *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, search string) (*contracts.PaginationResponse[contracts.UserInfo], error) {
+	offset := contracts.Offset(page, pageSize)
 	users, total, err := uc.userRepo.FindAll(ctx, pageSize, offset, search)
 	if err != nil {
 		return nil, err
 	}
 
-	userInfos := make([]dto.UserInfo, len(users))
+	userInfos := make([]contracts.UserInfo, len(users))
 	for i, user := range users {
 		userInfos[i] = *FormatUserInfo(user)
 	}
 
-	return dto.NewPaginationResponse(userInfos, page, pageSize, int(total)), nil
+	return contracts.NewPaginationResponse(userInfos, page, pageSize, int(total)), nil
 }
 
-func (uc *UserUseCase) GetUserByID(ctx context.Context, userID int64) (*dto.UserInfo, error) {
+func (uc *UserUseCase) GetUserByID(ctx context.Context, userID int64) (*contracts.UserInfo, error) {
 	user, err := uc.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return nil, errors.ErrUserNotFound
@@ -333,7 +333,7 @@ func (uc *UserUseCase) GetUserByID(ctx context.Context, userID int64) (*dto.User
 	return FormatUserInfo(user), nil
 }
 
-func (uc *UserUseCase) CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserInfo, error) {
+func (uc *UserUseCase) CreateUser(ctx context.Context, req *contracts.CreateUserRequest) (*contracts.UserInfo, error) {
 	if uc.userRepo.ExistsByEmail(ctx, req.Email) {
 		return nil, errors.ErrEmailAlreadyExists
 	}
@@ -358,7 +358,7 @@ func (uc *UserUseCase) CreateUser(ctx context.Context, req *dto.CreateUserReques
 	return FormatUserInfo(savedUser), nil
 }
 
-func (uc *UserUseCase) UpdateUser(ctx context.Context, userID int64, req *dto.UpdateUserRequest) (*dto.UserInfo, error) {
+func (uc *UserUseCase) UpdateUser(ctx context.Context, userID int64, req *contracts.UpdateUserRequest) (*contracts.UserInfo, error) {
 	user, err := uc.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return nil, errors.ErrUserNotFound
@@ -371,7 +371,7 @@ func (uc *UserUseCase) UpdateUser(ctx context.Context, userID int64, req *dto.Up
 	if req.Avatar != nil {
 		path := fmt.Sprintf("avatars/user_%d/", user.ID)
 
-		filePath, err := uc.localStorageService.UploadFile(*req.Avatar, path)
+		filePath, err := uc.localStorageService.UploadFile(req.Avatar.Filename, req.Avatar.Size, req.Avatar.Content, path)
 		if err != nil {
 			return nil, err
 		}
@@ -391,7 +391,7 @@ func (uc *UserUseCase) UpdateUser(ctx context.Context, userID int64, req *dto.Up
 	return FormatUserInfo(updatedUser), nil
 }
 
-func (uc *UserUseCase) ChangePassword(ctx context.Context, userID int64, req *dto.ChangePasswordRequest) error {
+func (uc *UserUseCase) ChangePassword(ctx context.Context, userID int64, req *contracts.ChangePasswordRequest) error {
 	user, err := uc.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return errors.ErrUserNotFound

@@ -1,9 +1,9 @@
 package ports
 
 import (
+	"go-gin-clean/internal/core/contracts"
 	"go-gin-clean/internal/core/domain/entities"
-	"go-gin-clean/internal/core/dto"
-	"mime/multipart"
+	"io"
 	"time"
 )
 
@@ -11,8 +11,8 @@ import (
 type JWTService interface {
 	GenerateAccessToken(user *entities.User) (string, time.Time, error)
 	GenerateRefreshToken(userID int64) (string, time.Time, error)
-	ValidateAccessToken(token string) (*dto.AccessTokenClaims, error)
-	ValidateRefreshToken(token string) (*dto.RefreshTokenClaims, error)
+	ValidateAccessToken(token string) (*contracts.AccessTokenClaims, error)
+	ValidateRefreshToken(token string) (*contracts.RefreshTokenClaims, error)
 }
 
 type BcryptService interface {
@@ -33,6 +33,6 @@ type MailerService interface {
 }
 
 type MediaService interface {
-	UploadFile(fileHeader multipart.FileHeader, filePath string) (*string, error)
+	UploadFile(filename string, size int64, content io.Reader, filePath string) (*string, error)
 	DeleteFile(filePath string) error
 }

@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"go-gin-clean/internal/adapters/primary/http/dto"
+	"go-gin-clean/internal/adapters/primary/http/mappers"
 	"go-gin-clean/internal/adapters/primary/http/messages"
 	"go-gin-clean/internal/adapters/primary/http/response"
-	"go-gin-clean/internal/core/dto"
 	"go-gin-clean/internal/core/ports"
 	"net/http"
 	"strconv"
@@ -13,11 +14,13 @@ import (
 
 type UserHandler struct {
 	userUseCase ports.UserUseCase
+	userMapper  mappers.UserMapper
 }
 
-func NewUserHandler(userUseCase ports.UserUseCase) *UserHandler {
+func NewUserHandler(userUseCase ports.UserUseCase, userMapper mappers.UserMapper) *UserHandler {
 	return &UserHandler{
 		userUseCase: userUseCase,
+		userMapper:  userMapper,
 	}
 }
 
@@ -28,11 +31,14 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userUseCase.Login(c.Request.Context(), &req)
+	contractReq := h.userMapper.LoginRequestToContract(&req)
+	contractResult, err := h.userUseCase.Login(c.Request.Context(), contractReq)
 	if err != nil {
 		response.Error(c, messages.FAILED_LOGIN, err.Error(), http.StatusUnauthorized)
 		return
 	}
+
+	result := h.userMapper.LoginResponseToDTO(contractResult)
 
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "refresh_token",
@@ -55,7 +61,8 @@ func (h *UserHandler) Register(c *gin.Context) {
 		return
 	}
 
-	if err := h.userUseCase.Register(c.Request.Context(), &req); err != nil {
+	contractReq := h.userMapper.RegisterRequestToContract(&req)
+	if err := h.userUseCase.Register(c.Request.Context(), contractReq); err != nil {
 		response.Error(c, messages.FAILED_REGISTRATION, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -70,11 +77,13 @@ func (h *UserHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userUseCase.RefreshToken(c.Request.Context(), cookie)
+	contractResult, err := h.userUseCase.RefreshToken(c.Request.Context(), cookie)
 	if err != nil {
 		response.Error(c, messages.FAILED_REFRESH_TOKEN, err.Error(), http.StatusUnauthorized)
 		return
 	}
+
+	result := h.userMapper.RefreshTokenResponseToDTO(contractResult)
 
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "refresh_token",
@@ -153,7 +162,8 @@ func (h *UserHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.userUseCase.ResetPassword(c.Request.Context(), &req); err != nil {
+	contractReq := h.userMapper.ResetPasswordRequestToContract(&req)
+	if err := h.userUseCase.ResetPassword(c.Request.Context(), contractReq); err != nil {
 		response.Error(c, messages.FAILED_RESET_PASSWORD, err.Error(), http.StatusBadRequest)
 	}
 
@@ -167,11 +177,13 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userUseCase.GetUserByID(c.Request.Context(), userID.(int64))
+	contractResult, err := h.userUseCase.GetUserByID(c.Request.Context(), userID.(int64))
 	if err != nil {
 		response.Error(c, messages.FAILED_LOAD_PROFILE, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	result := h.userMapper.UserInfoToDTO(contractResult)
 	response.Success(c, messages.SUCCESS_LOAD_PROFILE, result, http.StatusOK)
 }
 
@@ -188,11 +200,14 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userUseCase.UpdateUser(c.Request.Context(), userID.(int64), &req)
+	contractReq := h.userMapper.UpdateUserRequestToContract(&req)
+	contractResult, err := h.userUseCase.UpdateUser(c.Request.Context(), userID.(int64), contractReq)
 	if err != nil {
 		response.Error(c, messages.FAILED_UPDATE_PROFILE, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	result := h.userMapper.UserInfoToDTO(contractResult)
 	response.Success(c, messages.SUCCESS_UPDATE_PROFILE, result, http.StatusOK)
 }
 
@@ -210,11 +225,13 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 		req.PerPage = 10
 	}
 
-	result, err := h.userUseCase.GetAllUsers(c.Request.Context(), req.Page, req.PerPage, req.Search)
+	contractResult, err := h.userUseCase.GetAllUsers(c.Request.Context(), req.Page, req.PerPage, req.Search)
 	if err != nil {
 		response.Error(c, messages.FAILED_GET_ALL_USERS, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	result := h.userMapper.PaginationResponseToDTO(contractResult)
 	response.SuccessPagination(c, result.Data, response.SetMeta(req.Page, req.PerPage, result.Total, result.TotalPages))
 }
 
@@ -226,11 +243,13 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userUseCase.GetUserByID(c.Request.Context(), userID)
+	contractResult, err := h.userUseCase.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		response.Error(c, messages.FAILED_USER_NOT_FOUND, err.Error(), http.StatusNotFound)
 		return
 	}
+
+	result := h.userMapper.UserInfoToDTO(contractResult)
 	response.Success(c, messages.SUCCESS_GET_USER, result, http.StatusOK)
 }
 
@@ -241,11 +260,14 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userUseCase.CreateUser(c.Request.Context(), &req)
+	contractReq := h.userMapper.CreateUserRequestToContract(&req)
+	contractResult, err := h.userUseCase.CreateUser(c.Request.Context(), contractReq)
 	if err != nil {
 		response.Error(c, messages.FAILED_CREATE_USER, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	result := h.userMapper.UserInfoToDTO(contractResult)
 	response.Success(c, messages.SUCCESS_CREATE_USER, result, http.StatusCreated)
 }
 
@@ -263,11 +285,14 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	result, err := h.userUseCase.UpdateUser(c.Request.Context(), userID, &req)
+	contractReq := h.userMapper.UpdateUserRequestToContract(&req)
+	contractResult, err := h.userUseCase.UpdateUser(c.Request.Context(), userID, contractReq)
 	if err != nil {
 		response.Error(c, messages.FAILED_UPDATE_USER, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	result := h.userMapper.UserInfoToDTO(contractResult)
 	response.Success(c, messages.SUCCESS_UPDATE_USER, result, http.StatusOK)
 }
 
@@ -284,7 +309,8 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	err := h.userUseCase.ChangePassword(c.Request.Context(), userID.(int64), &req)
+	contractReq := h.userMapper.ChangePasswordRequestToContract(&req)
+	err := h.userUseCase.ChangePassword(c.Request.Context(), userID.(int64), contractReq)
 	if err != nil {
 		response.Error(c, messages.FAILED_PASSWORD_CHANGE, err.Error(), http.StatusBadRequest)
 		return

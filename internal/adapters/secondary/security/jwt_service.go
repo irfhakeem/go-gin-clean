@@ -1,9 +1,9 @@
 package security
 
 import (
+	"go-gin-clean/internal/core/contracts"
 	"go-gin-clean/internal/core/domain/entities"
 	"go-gin-clean/internal/core/domain/errors"
-	"go-gin-clean/internal/core/dto"
 	"go-gin-clean/internal/core/ports"
 	"go-gin-clean/pkg/config"
 	"strconv"
@@ -67,7 +67,7 @@ func (j *JWTService) GenerateRefreshToken(userID int64) (string, time.Time, erro
 	return tokenString, expiryAt, nil
 }
 
-func (j *JWTService) ValidateAccessToken(tokenString string) (*dto.AccessTokenClaims, error) {
+func (j *JWTService) ValidateAccessToken(tokenString string) (*contracts.AccessTokenClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.ErrUnexpectedSigningMethod
@@ -128,7 +128,7 @@ func (j *JWTService) ValidateAccessToken(tokenString string) (*dto.AccessTokenCl
 		return nil, errors.ErrInvalidClaims
 	}
 
-	return &dto.AccessTokenClaims{
+	return &contracts.AccessTokenClaims{
 		UserID:    int64(userID),
 		Email:     email,
 		TokenType: tokenType,
@@ -140,7 +140,7 @@ func (j *JWTService) ValidateAccessToken(tokenString string) (*dto.AccessTokenCl
 	}, nil
 }
 
-func (j *JWTService) ValidateRefreshToken(tokenString string) (*dto.RefreshTokenClaims, error) {
+func (j *JWTService) ValidateRefreshToken(tokenString string) (*contracts.RefreshTokenClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.ErrUnexpectedSigningMethod
@@ -196,7 +196,7 @@ func (j *JWTService) ValidateRefreshToken(tokenString string) (*dto.RefreshToken
 		return nil, errors.ErrInvalidClaims
 	}
 
-	return &dto.RefreshTokenClaims{
+	return &contracts.RefreshTokenClaims{
 		UserID:    int64(userID),
 		TokenType: tokenType,
 		ExpiresAt: time.Unix(int64(exp), 0),
