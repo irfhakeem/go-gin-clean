@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -73,4 +74,55 @@ func GeneratePassword(length int, includeSpecialChars bool) string {
 	}
 
 	return string(result)
+}
+
+func GenerateInitials(s string) string {
+	reg := regexp.MustCompile(`[^a-zA-Z0-9]`)
+	s = reg.ReplaceAllString(s, "")
+	s = strings.ToUpper(s)
+
+	result := make([]byte, 0, 3)
+	for i := 0; i < 3; i++ {
+		idx := rand.Intn(len(s))
+		result = append(result, s[idx])
+	}
+
+	return string(result)
+}
+
+func ParseAllowedOrigins(originsStr string) []string {
+	if originsStr == "" {
+		return []string{}
+	}
+
+	origins := strings.Split(originsStr, ",")
+	for i, origin := range origins {
+		origins[i] = strings.TrimSpace(origin)
+	}
+	return origins
+}
+
+func ParseFrontendURLs(urlsStr string) map[string]string {
+	frontendURLs := make(map[string]string)
+
+	// Default to empty if not provided
+	if urlsStr == "" {
+		return frontendURLs
+	}
+
+	pairs := strings.Split(urlsStr, ";")
+	for _, pair := range pairs {
+		kv := strings.Split(pair, "=")
+		if len(kv) == 2 {
+			appID := strings.TrimSpace(kv[0])
+			url := strings.TrimSpace(kv[1])
+			frontendURLs[appID] = url
+		}
+	}
+
+	return frontendURLs
+}
+
+func FormatPKIDToStr(pkid int64) string {
+	return strconv.FormatInt(pkid, 10)
 }

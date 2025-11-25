@@ -25,3 +25,7 @@ func GenerateNumber(len int, start int, end int) string {
 
 	return result
 }
+
+func ParseStrToPKID(pkidStr string) (int64, error) {
+	return strconv.ParseInt(pkidStr, 10, 64)
+}

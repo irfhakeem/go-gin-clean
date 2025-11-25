@@ -2,17 +2,22 @@ package config
 
 import (
 	"fmt"
+	"go-gin-clean/pkg/utils"
 	"os"
 	"strconv"
 	"time"
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	Mailer   MailerConfig
-	AES      AESConfig
+	Server     ServerConfig
+	Database   DatabaseConfig
+	JWT        JWTConfig
+	OAuth      OAuthConfig
+	Mailer     MailerConfig
+	AES        AESConfig
+	RabbitMQ   RabbitMQConfig
+	Cloudinary CloudinaryConfig
+	Redis      RedisConfig
 }
 
 type ServerConfig struct {
@@ -41,6 +46,17 @@ type JWTConfig struct {
 	RefreshTokenExpiry time.Duration
 }
 
+type OAuthConfig struct {
+	GoogleClientID       string
+	GoogleClientSecret   string
+	GoogleRedirectURL    string
+	GoogleAllowedOrigins []string
+
+	OAuthStateString string
+	FrontendURLs     map[string]string
+	DefaultAppID     string
+}
+
 type MailerConfig struct {
 	Host     string
 	Port     int
@@ -54,13 +70,32 @@ type AESConfig struct {
 	IV  string
 }
 
+type RabbitMQConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+}
+
+type CloudinaryConfig struct {
+	CloudinaryURL string
+}
+
+type RedisConfig struct {
+	Host       string
+	Port       int
+	Password   string
+	DB         int
+	Expiration int
+}
+
 func Load() (*Config, error) {
 	return &Config{
 		Server: ServerConfig{
 			Host:        getEnv("SERVER_HOST", "localhost"),
 			Port:        getEnvAsInt("SERVER_PORT", 3000),
 			Environment: getEnv("ENVIRONMENT", "development"),
-			AppUrl:      getEnv("APP_URL", "http://localhost:8080"),
+			AppUrl:      getEnv("FRONTEND_URL", "http://localhost:8080"),
 			Timeout:     getEnvAsInt("TIMEOUT", 30),
 		},
 		Database: DatabaseConfig{
@@ -79,6 +114,16 @@ func Load() (*Config, error) {
 			AccessTokenExpiry:  getEnvAsDuration("JWT_ACCESS_EXPIRY", 1*time.Hour),
 			RefreshTokenExpiry: getEnvAsDuration("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
 		},
+		OAuth: OAuthConfig{
+			GoogleClientID:       getEnv("GOOGLE_CLIENT_ID", "your-google-client-id"),
+			GoogleClientSecret:   getEnv("GOOGLE_CLIENT_SECRET", "your-google-client-secret"),
+			GoogleRedirectURL:    getEnv("GOOGLE_REDIRECT_URL", "http://localhost:3000/oauth/callback/google"),
+			GoogleAllowedOrigins: utils.ParseAllowedOrigins(getEnv("GOOGLE_ALLOWED_ORIGINS", "http://localhost:5000")),
+
+			OAuthStateString: getEnv("OAUTH_STATE_STRING", "your-random-state-string"),
+			FrontendURLs:     utils.ParseFrontendURLs(getEnv("FRONTEND_URL", "http://localhost:5000:default")),
+			DefaultAppID:     getEnv("DEFAULT_APP_ID", "default"),
+		},
 		Mailer: MailerConfig{
 			Host:     getEnv("MAILER_HOST", "smtp.example.com"),
 			Port:     getEnvAsInt("MAILER_PORT", 587),
@@ -89,6 +134,21 @@ func Load() (*Config, error) {
 		AES: AESConfig{
 			Key: getEnv("AES_KEY", "your-aes-encryption-key"),
 			IV:  getEnv("AES_IV", "your-aes-initialization-vector"),
+		},
+		RabbitMQ: RabbitMQConfig{
+			Host:     getEnv("RABBITMQ_HOST", "localhost"),
+			Port:     getEnvAsInt("RABBITMQ_PORT", 5672),
+			Username: getEnv("RABBITMQ_USER", "guest"),
+			Password: getEnv("RABBITMQ_PASSWORD", "guest"),
+		},
+		Cloudinary: CloudinaryConfig{
+			CloudinaryURL: getEnv("CLOUDINARY_URL", "cloudinary://API_KEY:API_SECRET@CLOUD_NAME"),
+		},
+		Redis: RedisConfig{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnvAsInt("REDIS_PORT", 6379),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
 	}, nil
 }
@@ -102,8 +162,12 @@ func (c *DatabaseConfig) DSN() string {
 		c.Host, c.User, c.Password, c.DBName, c.Port)
 }
 
+func (c *RabbitMQConfig) DSN() string {
+	return fmt.Sprintf("amqp://%s:%s@%s:%d/", c.Username, c.Password, c.Host, c.Port)
+}
+
 func GetAppURL() string {
-	return getEnv("APP_URL", "http://localhost:5000")
+	return getEnv("FRONTEND_URL", "http://localhost:5000")
 }
 
 // Helper

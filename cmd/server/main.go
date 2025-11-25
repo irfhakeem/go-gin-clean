@@ -4,17 +4,17 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	httpAdapter "go-gin-clean/internal/adapters/primary/http"
+	"go-gin-clean/internal/delivery/http/route"
 	"go-gin-clean/internal/infrastructure"
 	"go-gin-clean/pkg/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/rabbitmq/amqp091-go"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -35,7 +35,23 @@ func main() {
 		log.Fatalf("Error connecting to database: %v", err)
 	}
 
-	container := infrastructure.NewContainer(db, cfg)
+	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	conn, ch, err := setupRabbitMQ(&cfg.RabbitMQ)
+	if err != nil {
+		log.Fatalf("Error connecting to RabbitMQ: %v", err)
+	}
+	defer func() {
+		if ch != nil {
+			ch.Close()
+		}
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	container := infrastructure.NewContainer(db, ch, cfg)
 
 	if cfg.Server.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -43,15 +59,12 @@ func main() {
 
 	router := gin.Default()
 
-	httpAdapter.SetupRoutes(router, container.UserUseCase, container.JWTService)
+	route.SetupRoutes(router, &container.UserHandler, &container.OauthHandler, &container.JWTService)
 
 	srv := &http.Server{
 		Addr:    cfg.Server.Address(),
 		Handler: router,
 	}
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		log.Printf("Starting server on %s...", cfg.Server.Address())
@@ -60,14 +73,14 @@ func main() {
 		}
 	}()
 
-	<-quit
-	log.Println("Shutting down server...")
+	<-rootCtx.Done()
+	log.Println("Received shutdown signal. Starting graceful shutdown...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Server.Timeout)*time.Second)
-	defer cancel()
+	shutdownCtx, cancelServer := context.WithTimeout(context.Background(), time.Duration(cfg.Server.Timeout)*time.Second)
+	defer cancelServer()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Server forced to shutdown (timeout): %v", err)
 	}
 
 	log.Println("Server exiting")
@@ -100,4 +113,20 @@ func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	psqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
 
 	return db, nil
+}
+
+func setupRabbitMQ(cfg *config.RabbitMQConfig) (*amqp091.Connection, *amqp091.Channel, error) {
+	dsn := cfg.DSN()
+	conn, err := amqp091.Dial(dsn)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ch, err := conn.Channel()
+	if err != nil {
+		conn.Close()
+		return nil, nil, err
+	}
+
+	return conn, ch, nil
 }

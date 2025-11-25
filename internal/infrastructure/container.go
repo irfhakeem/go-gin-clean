@@ -1,43 +1,54 @@
 package infrastructure
 
 import (
-	"go-gin-clean/internal/adapters/secondary/database"
-	"go-gin-clean/internal/adapters/secondary/mailer"
-	"go-gin-clean/internal/adapters/secondary/media"
-	"go-gin-clean/internal/adapters/secondary/security"
-	"go-gin-clean/internal/core/ports"
-	"go-gin-clean/internal/core/usecases"
+	"go-gin-clean/internal/delivery/http"
+	"go-gin-clean/internal/gateway/cache"
+	"go-gin-clean/internal/gateway/media"
+	"go-gin-clean/internal/gateway/messaging"
+	"go-gin-clean/internal/gateway/security"
+	"go-gin-clean/internal/repository"
+	"go-gin-clean/internal/usecase"
 	"go-gin-clean/pkg/config"
 
+	"github.com/rabbitmq/amqp091-go"
 	"gorm.io/gorm"
 )
 
 type Container struct {
-	UserUseCase   ports.UserUseCase
-	EmailUseCase  ports.EmailUseCase
-	JWTService    ports.JWTService
-	MailerService ports.MailerService
+	UserHandler  http.UserHandler
+	OauthHandler http.OAuthHandler
+	JWTService   security.JWTService
+	OAuthService security.OAuthService
 }
 
-func NewContainer(db *gorm.DB, cfg *config.Config) *Container {
+func NewContainer(db *gorm.DB, ch *amqp091.Channel, cfg *config.Config) *Container {
 	// Init repositories
-	userRepo := database.NewUserRepository(db)
-	refreshTokenRepo := database.NewRefreshTokenRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 
 	// Init services
 	jwtService := security.NewJWTService(&cfg.JWT)
-	bcryptService := security.NewBcryptService()
+	passwordService := security.NewBcryptService()
+	oauthService := security.NewOAuthService(&cfg.OAuth)
 	aesService := security.NewAESService(&cfg.AES)
-	smtpService := mailer.NewSMTPService(&cfg.Mailer)
-	localStorageService := media.NewLocalStorageService()
+	cloudinaryService := media.NewCloudinaryService(&cfg.Cloudinary)
+	localStorageService := media.NewLocalStorageService("")
+	redisService := cache.NewRedisService(&cfg.Redis)
+
+	// init message publisher
+	userPublisher := messaging.NewUserPublisher(ch)
 
 	// Init use cases
-	emailUseCase := usecases.NewEmailUseCase(smtpService)
-	userUseCase := usecases.NewUserUseCase(userRepo, emailUseCase, refreshTokenRepo, jwtService, bcryptService, aesService, localStorageService)
+	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, jwtService, passwordService, oauthService, aesService, cloudinaryService, localStorageService, redisService, userPublisher)
+
+	// Init handlers
+	userHandler := http.NewUserHandler(userUseCase)
+	oauthHandler := http.NewOAuthHandler(userUseCase)
 
 	return &Container{
-		UserUseCase:  userUseCase,
-		EmailUseCase: emailUseCase,
-		JWTService:   jwtService,
+		UserHandler:  *userHandler,
+		OauthHandler: *oauthHandler,
+		JWTService:   *jwtService,
+		OAuthService: *oauthService,
 	}
 }

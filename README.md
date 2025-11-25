@@ -1,174 +1,270 @@
 # Go Gin Clean Architecture
 
-A complete Go web application implementing Clean Architecture principles with proper separation of concerns, dependency inversion, and framework-independent core business logic.
+A production-ready Go web application implementing Clean Architecture principles with proper separation of concerns, dependency injection, and modern best practices.
 
 ## 🏗️ Architecture Overview
 
-This project follows **Clean Architecture** principles with proper separation of concerns and framework independence. The core business logic is completely isolated from external dependencies:
+This project follows **Clean Architecture** principles with a pragmatic layered approach:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Adapters Layer                          │
-├─────────────────────────┬───────────────────────────────────┤
-│    Primary (HTTP)       │       Secondary (Infrastructure)  │
-│                         │                                   │
-│  ┌─────────────────┐   │   ┌─────────────────────────────┐ │
-│  │ DTOs (Framework │   │   │ Database, SMTP, JWT,        │ │
-│  │ Specific)       │   │   │ Media Services              │ │
-│  └─────────────────┘   │   └─────────────────────────────┘ │
-│           │             │                                   │
-│  ┌─────────────────┐   │                                   │
-│  │ Mappers         │   │                                   │
-│  └─────────────────┘   │                                   │
-└─────────┬───────────────┴───────────────────────────────────┘
-          │ (Contracts)
-┌─────────▼───────────────────────────────────────────────────┐
-│                     Core Layer                              │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
-│  │ Contracts       │  │ Use Cases       │  │ Entities    │ │
-│  │ (Clean DTOs)    │  │ (Business Logic)│  │ (Domain)    │ │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                   External Interfaces                     │
+│     HTTP Clients, PostgreSQL, Redis, RabbitMQ, etc.      │
+└──────────────────────────────────────────────────────────┘
+                            ▲
+                            │
+┌──────────────────────────────────────────────────────────┐
+│                    Delivery Layer                         │
+│         HTTP Handlers, Middleware, Routes                 │
+│            (Presents data to external world)              │
+└──────────────────────────────────────────────────────────┘
+                            ▲
+                            │
+┌──────────────────────────────────────────────────────────┐
+│                   Use Case Layer                          │
+│         Application Business Logic & Orchestration        │
+│    (Coordinates entities, repositories, and gateways)     │
+└──────────────────────────────────────────────────────────┘
+                            ▲
+                            │
+┌──────────────────────────┬───────────────────────────────┐
+│     Repository Layer     │      Gateway Layer            │
+│   (Database Access)      │  (Security, Media, Cache,     │
+│   • User Repository      │   Messaging Services)         │
+│   • Token Repository     │  • JWT, Bcrypt, AES, OAuth    │
+│                          │  • Cloudinary, Local Storage  │
+│                          │  • Redis, RabbitMQ            │
+└──────────────────────────┴───────────────────────────────┘
+                            ▲
+                            │
+┌──────────────────────────────────────────────────────────┐
+│                    Entity Layer                           │
+│        Domain Models & Business Rules (Pure Go)           │
+│              • User    • RefreshToken                     │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**Key Architectural Benefits:**
-- **Framework Independence**: Core layer has zero dependencies on HTTP frameworks, databases, or external libraries
-- **Testability**: Business logic can be tested in isolation with pure domain objects
-- **Flexibility**: Easy to swap HTTP frameworks (Gin → Fiber/Echo) or databases without affecting business logic
-- **Maintainability**: Clear boundaries and single responsibility for each layer
+**Dependency Rule**: Inner layers know nothing about outer layers. Dependencies point inward.
 
 ## 📁 Project Structure
 
 ```
 go-gin-clean/
-├── cmd/                          # Application entrypoints
-│   ├── server/main.go           # HTTP server
-│   └── migrate/main.go          # Database migrations
-├── internal/                    # Private application code
-│   ├── core/                    # Core business logic (framework-independent)
-│   │   ├── contracts/           # Clean, framework-agnostic DTOs
-│   │   │   ├── user_contracts.go      # User-related contracts
-│   │   │   └── pagination_contracts.go # Pagination contracts
-│   │   ├── domain/              # Enterprise business rules
-│   │   │   ├── entities/        # Business entities (User, RefreshToken, Audit)
-│   │   │   ├── enums/           # Enumerations (Gender)
-│   │   │   └── errors/          # Domain errors
-│   │   ├── ports/               # Interfaces (use contracts, not DTOs)
-│   │   │   ├── repositories.go  # Repository interfaces
-│   │   │   ├── services.go      # Service interfaces
-│   │   │   └── usecases.go      # Use case interfaces
-│   │   └── usecases/            # Application business rules
-│   │       ├── user_usecase.go  # User business logic
-│   │       └── email_usecase.go # Email business logic
-│   ├── adapters/                # Adapters for external interfaces
-│   │   ├── primary/http/        # HTTP layer (framework-specific)
-│   │   │   ├── dto/             # HTTP DTOs with framework bindings
-│   │   │   │   ├── user_dto.go     # Gin-specific user DTOs
-│   │   │   │   └── pagination_dto.go # Gin-specific pagination DTOs
-│   │   │   ├── mappers/         # Convert DTOs ↔ Contracts
-│   │   │   │   ├── interfaces.go    # Mapper interfaces
-│   │   │   │   ├── user_mapper.go   # User mapping implementation
-│   │   │   │   └── pagination_mapper.go # Pagination mapping
-│   │   │   ├── handlers/        # HTTP handlers (use mappers)
-│   │   │   ├── messages/        # Response messages
-│   │   │   ├── response/        # Response utilities
-│   │   │   ├── middleware.go    # Authentication middleware
-│   │   │   └── routes.go        # Route definitions
-│   │   └── secondary/           # External service implementations
-│   │       ├── database/        # Database repositories
-│   │       ├── security/        # JWT, Bcrypt, AES services (use contracts)
-│   │       ├── mailer/          # SMTP email service
-│   │       └── media/           # Local storage service (framework-independent)
-│   └── infrastructure/          # Infrastructure concerns
-│       └── container.go         # Dependency injection
-└── pkg/                         # Public libraries
-    ├── config/                  # Configuration management
-    └── utils/                   # Utility functions
+├── cmd/                                    # Application entrypoints
+│   ├── server/main.go                     # HTTP server (main entry)
+│   └── migrate/main.go                    # Database migration CLI
+│
+├── internal/                              # Private application code
+│   ├── delivery/                          # 📤 Delivery Layer (Presentation)
+│   │   └── http/                          # HTTP transport
+│   │       ├── middleware/                # Auth, CORS, rate limiting
+│   │       ├── response/                  # Standardized API responses
+│   │       ├── route/                     # Route registration
+│   │       │   └── route.go               # All API routes defined here
+│   │       ├── user_handler.go            # User HTTP handlers
+│   │       └── oauth_handler.go           # OAuth HTTP handlers
+│   │
+│   ├── usecase/                           # 🎯 Use Case Layer (Business Logic)
+│   │   └── user_usecase.go                # User business logic orchestration
+│   │
+│   ├── repository/                        # 💾 Repository Layer (Data Access)
+│   │   ├── repository.go                  # Base repository interface
+│   │   ├── user_repository.go             # User data operations (GORM)
+│   │   └── refresh_token_repository.go    # Token persistence
+│   │
+│   ├── gateway/                           # 🌐 Gateway Layer (External Services)
+│   │   ├── security/                      # Security services
+│   │   │   ├── jwt_service.go             # JWT generation & validation
+│   │   │   ├── bcrypt_service.go          # Password hashing
+│   │   │   ├── aes_service.go             # AES encryption/decryption
+│   │   │   └── oauth_service.go           # Google OAuth integration
+│   │   ├── media/                         # File storage services
+│   │   │   ├── localstorage_service.go    # Local file system storage
+│   │   │   └── cloudinary_service.go      # Cloudinary cloud storage
+│   │   ├── cache/                         # Caching services
+│   │   │   └── redis.go                   # Redis cache operations
+│   │   └── messaging/                     # Async messaging
+│   │       ├── publisher.go               # RabbitMQ base publisher
+│   │       └── user_publisher.go          # User event publisher
+│   │
+│   ├── entity/                            # 🏛️ Entity Layer (Domain Models)
+│   │   ├── user.go                        # User entity with business rules
+│   │   ├── refresh_token.go               # RefreshToken entity
+│   │   └── audit.go                       # Audit fields (created/updated)
+│   │
+│   ├── model/                             # 📋 DTOs & Transfer Objects
+│   │   ├── user_model.go                  # User request/response DTOs
+│   │   ├── oauth_model.go                 # OAuth DTOs
+│   │   ├── claims_model.go                # JWT claims
+│   │   ├── user_event.go                  # Event payloads for messaging
+│   │   └── pagination.go                  # Pagination utilities
+│   │
+│   └── infrastructure/                    # 🔧 Infrastructure (Dependency Injection)
+│       └── container.go                   # IoC container for wiring dependencies
+│
+├── pkg/                                   # Public shared packages
+│   ├── config/                            # Configuration management
+│   │   └── config.go                      # Environment variable loader
+│   ├── errors/                            # Application error definitions
+│   │   └── errors.go                      # Centralized error messages
+│   └── utils/                             # Utility functions
+│       ├── string_utils.go                # String helpers
+│       └── number_utils.go                # Number helpers
+│
+├── migrations/                            # 📊 Database migrations (golang-migrate)
+│   ├── 000001_create_enums.up.sql        # Create enum types
+│   ├── 000001_create_enums.down.sql
+│   ├── 000002_create_users_table.up.sql  # Create users table
+│   ├── 000002_create_users_table.down.sql
+│   ├── 000003_create_refresh_tokens_table.up.sql
+│   └── 000003_create_refresh_tokens_table.down.sql
+│
+├── assets/                                # Static assets & uploaded files
+├── .env.example                           # Environment variables template
+├── .air.toml                              # Air hot reload configuration
+├── Dockerfile                             # Production Docker image
+├── Makefile                               # Development commands
+├── go.mod                                 # Go module definition
+└── go.sum                                 # Dependency checksums
 ```
 
-**Layer Responsibilities:**
-- **Core/Contracts**: Clean data structures for inter-layer communication
-- **Core/Domain**: Pure business entities and rules (no external dependencies)
-- **Core/Ports**: Interfaces defining contracts between layers
-- **Core/UseCases**: Business logic using contracts for communication
-- **Adapters/Primary/HTTP**: Web layer with framework-specific DTOs and mappers
-- **Adapters/Secondary**: Infrastructure implementations (database, services)
+### Key Architectural Decisions
+
+- **Separation of Concerns**: Each layer has a single responsibility
+- **Dependency Inversion**: Inner layers define interfaces, outer layers implement them
+- **No Circular Dependencies**: Dependencies flow inward (Entity ← Repository/Gateway ← UseCase ← Delivery)
+- **Testability**: Business logic isolated from frameworks and external services
+- **Flexibility**: Easy to swap implementations (e.g., switch from local storage to S3)
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Go 1.21+
-- PostgreSQL
-- Git
+- **Go 1.21+** (1.24.3 used in this project)
+- **PostgreSQL 12+** (primary database)
+- **Redis** (optional, for caching)
+- **RabbitMQ** (optional, for async email notifications)
+- **Docker** (optional, for running dependencies)
 
-### Setup
+### Installation
 
 1. **Clone the repository**
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/yourusername/go-gin-clean.git
    cd go-gin-clean
    ```
 
-2. **Install dependencies**
+2. **Install Go dependencies**
 
    ```bash
    go mod download
    ```
 
-3. **Environment setup**
-   Copy `.env.example` to `.env` and configure:
+3. **Setup environment variables**
+
+   Copy `.env.example` to `.env` and configure your settings:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   **Key environment variables:**
 
    ```env
-   # Server
+   # Server Configuration
    SERVER_HOST=localhost
-   SERVER_PORT=8080
+   SERVER_PORT=3000
    ENVIRONMENT=development
-   APP_FE_URL=
+   FRONTEND_URL=http://localhost:3120
    TIMEOUT=30
 
    # Database
    DB_HOST=localhost
    DB_PORT=5432
-   DB_USERNAME=postgres
-   DB_PASSWORD=your_password
-   DB_NAME=go_gin_clean
-   DB_MAX_IDLE_CONNS=25
-   DB_MAX_OPEN_CONNS=5
+   DB_USER=postgres
+   DB_PASSWORD=your_password_here
+   DB_NAME=go_clean_architecture
+   DB_MAX_OPEN_CONNS=100
+   DB_MAX_IDLE_CONNS=10
 
-   # JWT
-   JWT_ISSUER=go-gin-clean
-   JWT_ACCESS_SECRET=your-access-secret-key
-   JWT_REFRESH_SECRET=your-refresh-secret-key
-   JWT_ACCESS_EXPIRY=1h
+   # JWT Authentication
+   JWT_ISSUER=your-app-name
+   JWT_ACCESS_SECRET=your-super-secret-access-key-change-this-in-production
+   JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-this-in-production
+   JWT_ACCESS_EXPIRY=15m
    JWT_REFRESH_EXPIRY=168h
 
-   # AES Encryption
-   AES_KEY=your-32-character-encryption-key
-   AES_IV=your-16-character-iv-key
+   # AES Encryption (for tokens & sensitive data)
+   AES_KEY=your-32-character-secret-key
+   AES_IV=your-16-character-init-vector
 
-   # SMTP Email (optional)
-   MAILER_HOST=smtp.gmail.com
-   MAILER_PORT=587
-   MAILER_SENDER=your-email@gmail.com
-   MAILER_AUTH=your-email@gmail.com
-   MAILER_PASSWORD=your-app-password
+   # Google OAuth 2.0
+   GOOGLE_CLIENT_ID=your-google-client-id
+   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   GOOGLE_REDIRECT_URL=http://localhost:3120/callback
+   GOOGLE_ALLOWED_ORIGINS=http://localhost:3120
+   OAUTH_STATE_STRING=random-secure-state-string
+
+   # Cloudinary (for cloud file storage)
+   CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name
+
+   # Redis (optional - for caching)
+   REDIS_HOST=localhost
+   REDIS_PORT=6379
+   REDIS_PASSWORD=
+   REDIS_DB=0
+   REDIS_EXPIRATION=604800
+
+   # RabbitMQ (optional - for async messaging)
+   RABBITMQ_HOST=localhost
+   RABBITMQ_PORT=5672
+   RABBITMQ_USER=guest
+   RABBITMQ_PASSWORD=guest
    ```
 
-4. **Database migration**
+4. **Start development dependencies (PostgreSQL, Redis, RabbitMQ)**
+
+   Using Docker Compose:
 
    ```bash
-   go run cmd/migrate/main.go migrate
+   make docker-up
    ```
 
-5. **Start the server**
+   Or start PostgreSQL manually and skip optional services.
+
+5. **Run database migrations**
+
+   Choose one of two migration approaches:
+
+   **Option A: golang-migrate (Recommended for production)**
    ```bash
+   make migrate-up
+   ```
+
+   **Option B: GORM Auto-migrate (Quick for development)**
+   ```bash
+   make migrate-legacy-up
+   ```
+
+6. **Start the application**
+
+   ```bash
+   make run
+   # or
    go run cmd/server/main.go
    ```
 
-The server will start on `http://localhost:8080`
+The server will start on `http://localhost:3000`
+
+### Development with Hot Reload
+
+Install [Air](https://github.com/cosmtrek/air) for hot reloading:
+
+```bash
+go install github.com/cosmtrek/air@latest
+air
+```
 
 ## 📚 API Documentation
 
@@ -176,347 +272,125 @@ The server will start on `http://localhost:8080`
 
 - `GET /health` - Server health status
 
-### Authentication (Public Routes)
+### Authentication
 
 - `POST /api/v1/auth/register` - User registration
-- `POST /api/v1/auth/login` - User login (sets refresh token in cookie)
+- `POST /api/v1/auth/login` - User login
 - `POST /api/v1/auth/refresh-token` - Refresh access token
-- `POST /api/v1/auth/verify-email` - Email verification
-- `POST /api/v1/auth/send-verify-email` - Send verification email
-- `POST /api/v1/auth/send-reset-password` - Send reset password email
+- `POST /api/v1/auth/verify-email` - Verify email address
+- `POST /api/v1/auth/send-reset-password` - Request password reset
 - `POST /api/v1/auth/reset-password` - Reset password with token
+- `POST /api/v1/auth/resend-verification` - Resend verification email
 
-### Profile Management (Protected Routes)
+### OAuth 2.0
+
+- `POST /api/v1/auth/oauth2/url` - Get OAuth provider login URL
+- `GET /api/v1/auth/oauth2/:provider/callback` - OAuth callback handler (Google)
+
+### Profile (Authenticated)
 
 - `GET /api/v1/profile` - Get current user profile
-- `PUT /api/v1/profile` - Update current user profile
-- `POST /api/v1/profile/change-password` - Change user password
-- `POST /api/v1/profile/logout` - User logout
+- `PUT /api/v1/profile` - Update profile (name, avatar, gender)
+- `PUT /api/v1/profile/change-password` - Change password
+- `POST /api/v1/profile/logout` - Logout (revoke tokens)
 
-### User Management (Protected Routes)
+### User Management (Authenticated)
 
-- `GET /api/v1/users` - Get all users (paginated)
-- `GET /api/v1/users/:id` - Get user by ID
+- `GET /api/v1/users` - Get all users (paginated, searchable)
+- `GET /api/v1/users/:code` - Get user by code
 - `POST /api/v1/users` - Create new user
-- `PUT /api/v1/users/:id` - Update user
-- `DELETE /api/v1/users/:id` - Delete user
+- `PUT /api/v1/users/:code` - Update user
+- `PUT /api/v1/users/:code/change-status` - Change user active status
+- `DELETE /api/v1/users/:code` - Delete user
 
-### Static Assets
+### Authentication Header
 
-- `GET /assets/*` - Serve static files from assets directory
-
-## 🔧 Available Commands
-
-### Database Commands
-
-```bash
-# Run migrations
-go run cmd/migrate/main.go migrate
-
-# Rollback migrations
-go run cmd/migrate/main.go rollback
-
-# Fresh migrations (rollback + migrate)
-go run cmd/migrate/main.go fresh
-```
-
-### Development Commands
-
-```bash
-# Start server
-go run cmd/server/main.go
-
-# Build server
-go build -o bin/server cmd/server/main.go
-
-# Build migration tool
-go build -o bin/migrate cmd/migrate/main.go
-
-# Run tests
-go test ./...
-
-# Check for issues
-go vet ./...
-```
-
-## 🏛️ Clean Architecture Benefits
-
-### 1. **Framework Independence**
-
-- Core business logic has **zero dependencies** on Gin, HTTP, or external frameworks
-- Easy to switch from Gin to Fiber, Echo, or any other HTTP framework
-- Business rules remain unchanged when external dependencies change
-- **Contracts layer** ensures clean communication between layers
-
-### 2. **Testability**
-
-- Use cases can be tested with pure domain objects (no mocking of framework types)
-- **Mappers** can be unit tested independently
-- Business logic isolated from HTTP concerns and database specifics
-- Mock interfaces at the ports level for comprehensive testing
-
-### 3. **Maintainability**
-
-- **Clear separation**: DTOs (HTTP layer) vs Contracts (domain layer)
-- **Single Responsibility**: Each layer has a specific, well-defined purpose
-- **Dependency Rule**: Inner layers never depend on outer layers
-- Easy to understand, modify, and extend
-
-### 4. **Flexibility & Scalability**
-
-- **Plug-and-play architecture**: Swap implementations without affecting business logic
-- **Mapper pattern**: Clean conversion between external data formats and domain contracts
-- Add new delivery mechanisms (GraphQL, gRPC) without changing use cases
-- Horizontal scaling through clear component boundaries
-
-### 5. **Domain-Driven Design**
-
-- **Pure domain entities** with no external dependencies
-- **Contracts** represent the true business data structures
-- Business rules concentrated in the use case layer
-- Framework concerns isolated in adapter layers
-
-## 🧪 Testing
-
-The Clean Architecture with contracts makes testing straightforward and framework-independent:
-
-### Use Case Testing (Pure Business Logic)
-```go
-// Test use cases with contracts - no framework dependencies
-func TestUserUseCase_Login(t *testing.T) {
-    // Arrange
-    mockUserRepo := &mocks.UserRepository{}
-    mockJWTService := &mocks.JWTService{}
-    mockBcryptService := &mocks.BcryptService{}
-
-    useCase := usecases.NewUserUseCase(mockUserRepo, mockJWTService, mockBcryptService)
-
-    loginReq := &contracts.LoginRequest{
-        Email:    "test@example.com",
-        Password: "password123",
-    }
-
-    // Act
-    result, err := useCase.Login(context.Background(), loginReq)
-
-    // Assert - pure domain testing
-    assert.NoError(t, err)
-    assert.NotEmpty(t, result.AccessToken)
-}
-```
-
-### Mapper Testing (Conversion Logic)
-```go
-// Test mappers independently
-func TestUserMapper_LoginRequestToContract(t *testing.T) {
-    mapper := mappers.NewUserMapper()
-
-    dtoReq := &dto.LoginRequest{
-        Email:    "test@example.com",
-        Password: "password123",
-    }
-
-    contractReq := mapper.LoginRequestToContract(dtoReq)
-
-    assert.Equal(t, dtoReq.Email, contractReq.Email)
-    assert.Equal(t, dtoReq.Password, contractReq.Password)
-}
-```
-
-### Handler Testing (HTTP Layer)
-```go
-// Test handlers with mocked mappers and use cases
-func TestUserHandler_Login(t *testing.T) {
-    mockUseCase := &mocks.UserUseCase{}
-    mockMapper := &mocks.UserMapper{}
-
-    handler := handlers.NewUserHandler(mockUseCase, mockMapper)
-
-    // Test HTTP concerns separately from business logic
-}
-```
-
-## 🔐 Security Features
-
-### Password Security
-
-- **Bcrypt Hashing**: Industry-standard password hashing
-- **Salt Generation**: Automatic salt generation for each password
-- **Cost Factor**: Configurable cost factor for security vs performance
-
-### JWT Security
-
-- **HMAC Signing**: Secure token signing with secret keys
-- **Token Expiration**: Configurable expiration times
-- **Refresh Rotation**: Secure refresh token rotation
-
-### Data Encryption
-
-- **AES Encryption**: Additional data encryption capabilities
-- **Configurable Keys**: Environment-based encryption keys
-- **PKCS7 Padding**: Standard padding for block cipher
-
-## 🔒 Authentication
-
-The application uses JWT-based authentication with the following features:
-
-- **Access Token**: Short-lived token for API requests (1 hour)
-- **Refresh Token**: Long-lived token stored in HTTP-only cookie (7 days)
-- **Password Hashing**: Bcrypt for secure password storage
-- **AES Encryption**: Additional data encryption capabilities
-
-### Authentication Flow
-
-1. **Login**: User provides email/password, receives access token and refresh token (in cookie)
-2. **API Requests**: Include access token in Authorization header
-3. **Token Refresh**: Automatic refresh using HTTP-only cookie
-4. **Logout**: Clears refresh token and invalidates session
-
-Include the access token in requests:
+Include the access token in protected requests:
 
 ```
 Authorization: Bearer <access_token>
 ```
 
-## 📧 Email Features
+## 🔧 Available Commands
 
-The application includes comprehensive email functionality:
+This project uses a `Makefile` for common operations. Run `make help` to see all available commands.
 
-- **Email Verification**: Send verification emails to new users
-- **Password Reset**: Send password reset emails with secure tokens
-- **Template System**: HTML email templates with dynamic data
-- **SMTP Integration**: Configurable SMTP service for email delivery
+### Docker Commands
 
-## 📁 File Upload
-
-Local file storage implementation:
-
-- **Avatar Upload**: Users can upload profile pictures
-- **Local Storage**: Files stored in local filesystem
-- **File Validation**: Type and size validation
-- **Secure Paths**: Protected file path handling
-
-## 🛠️ Development Guidelines
-
-### Adding New Features (Clean Architecture Flow)
-
-1. **Start with Domain**: Define entities, value objects, and domain rules in `internal/core/domain/`
-2. **Create Contracts**: Define clean data structures in `internal/core/contracts/`
-3. **Define Ports**: Create interfaces in `internal/core/ports/` using contracts (not DTOs)
-4. **Implement Use Cases**: Add business logic in `internal/core/usecases/` using contracts
-5. **Create Secondary Adapters**: Implement infrastructure services in `internal/adapters/secondary/`
-6. **Add HTTP DTOs**: Create framework-specific DTOs in `internal/adapters/primary/http/dto/`
-7. **Create Mappers**: Build mappers in `internal/adapters/primary/http/mappers/` to convert DTOs ↔ Contracts
-8. **Add HTTP Handlers**: Create handlers in `internal/adapters/primary/http/handlers/` using mappers
-9. **Wire Dependencies**: Update `internal/infrastructure/container.go`
-10. **Update Routes**: Add new routes in `internal/adapters/primary/http/routes.go`
-
-### Architecture Rules
-
-- **Dependency Rule**: Core layer NEVER imports from adapters layer
-- **Use Contracts**: Use cases communicate via contracts, never DTOs
-- **Map at Boundaries**: Convert DTOs to contracts at the HTTP boundary using mappers
-- **Framework Isolation**: Keep framework-specific code (Gin, GORM) in adapters layer only
-
-### Error Handling
-
-- **Domain errors** defined in `internal/core/domain/errors/`
-- **Contract-based** error handling in use cases
-- **HTTP-specific** error responses in `internal/adapters/primary/http/messages/`
-- **Consistent format** across all API endpoints
-
-### Layer Communication
-
-```go
-// ❌ Wrong - Use case importing DTO
-func (uc *UserUseCase) Login(req *dto.LoginRequest) error
-
-// ✅ Correct - Use case using contracts
-func (uc *UserUseCase) Login(req *contracts.LoginRequest) error
-
-// ❌ Wrong - Handler calling use case directly with DTO
-result, err := h.userUseCase.Login(&req)
-
-// ✅ Correct - Handler using mapper
-contractReq := h.userMapper.LoginRequestToContract(&req)
-contractResult, err := h.userUseCase.Login(contractReq)
-result := h.userMapper.LoginResponseToDTO(contractResult)
+```bash
+make docker-up           # Start PostgreSQL, Redis, RabbitMQ in Docker
+make docker-down         # Stop all Docker services
+make docker-logs         # View Docker service logs
+make docker-clean        # Remove all containers, volumes, and networks
 ```
 
-### Current Service Implementations
+### Database Migration Commands
 
-**Core Services (Framework-Independent):**
-- **UserUseCase**: Business logic using contracts for all operations
-- **EmailUseCase**: Email verification and password reset workflows
-- **Contracts**: Clean data structures (LoginRequest, UserInfo, etc.)
+**Golang-migrate (Production-ready SQL migrations)**
 
-**Infrastructure Services (Framework-Specific):**
-- **JWTService**: Token generation/validation using contracts
-- **BcryptService**: Password hashing
-- **EncryptionService**: AES encryption/decryption
-- **MailerService**: SMTP email with HTML templates
-- **MediaService**: File storage with framework-independent interface
+```bash
+make migrate-up          # Run all pending migrations
+make migrate-down        # Rollback last migration
+make migrate-version     # Show current migration version
+make migrate-force VERSION=1  # Force migration to specific version
+make migrate-create NAME=add_users  # Create new migration files
 
-**HTTP Services:**
-- **Mappers**: Convert between HTTP DTOs and domain contracts
-- **Handlers**: HTTP request/response handling using mappers
-- **DTOs**: Gin-specific data structures with binding tags
+# Raw commands
+go run cmd/migrate/main.go up
+go run cmd/migrate/main.go down
+go run cmd/migrate/main.go version
+go run cmd/migrate/main.go create <migration_name>
+```
 
-## 📈 Performance & Production
+**GORM Auto-migrate (Development only)**
 
-### Build for Production
+```bash
+make migrate-legacy-up    # Run GORM auto-migrations
+make migrate-legacy-down  # Drop all tables
+make migrate-legacy-fresh # Drop and recreate tables
+```
+
+### Development Commands
+
+```bash
+make run                 # Start the application
+make build               # Build binary to bin/server
+make test                # Run all tests
+make clean               # Remove build artifacts
+
+# Direct Go commands
+go run cmd/server/main.go          # Start server
+go build -o bin/server cmd/server/main.go   # Build server
+go test ./...                      # Run tests
+go test -v ./...                   # Run tests (verbose)
+go test -cover ./...               # Run tests with coverage
+go vet ./...                       # Check for issues
+go fmt ./...                       # Format code
+go mod tidy                        # Clean up dependencies
+```
+
+### Production Build & Deployment
 
 ```bash
 # Build optimized binary
 go build -ldflags="-s -w" -o bin/server cmd/server/main.go
 
-# Set production environment
-export ENVIRONMENT=production
+# Build Docker image
+docker build -t go-gin-clean:latest .
+
+# Run Docker container
+docker run -p 3000:3000 --env-file .env go-gin-clean:latest
 ```
 
-### Docker (Optional)
+### Useful Development Tools
 
-```dockerfile
-FROM golang:1.21-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go build -o server cmd/server/main.go
+```bash
+# Install Air for hot reload
+go install github.com/cosmtrek/air@latest
 
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/server .
-COPY --from=builder /app/templates ./templates
-CMD ["./server"]
+# Install golang-migrate CLI
+make install-migrate-cli
+
+# Run with hot reload
+air
 ```
-
-## 🌟 Features
-
-### Core Features
-
-- ✅ User Registration and Authentication
-- ✅ JWT Token-based Authentication with Refresh Tokens
-- ✅ Email Verification System
-- ✅ Password Reset Functionality
-- ✅ User Profile Management
-- ✅ File Upload (Avatar)
-- ✅ Pagination Support
-- ✅ CORS Configuration
-- ✅ Middleware Authentication
-
-### Security Features
-
-- ✅ Bcrypt Password Hashing
-- ✅ JWT Token Security
-- ✅ AES Data Encryption
-- ✅ HTTP-Only Cookie for Refresh Tokens
-- ✅ Input Validation and Sanitization
-
-### Infrastructure Features
-
-- ✅ Database Migration System
-- ✅ Configuration Management
-- ✅ SMTP Email Integration
-- ✅ Local File Storage
-- ✅ Structured Logging
-- ✅ Graceful Shutdown
