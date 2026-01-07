@@ -1,0 +1,77 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Environment files (NEVER include in Docker image)
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.example
+
+# Documentation
+*.md
+!README.md
+LICENSE
+CHANGES_SUMMARY.md
+DOCKER_SETUP.md
+REDIS_CACHE.md
+QUICKSTART.md
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+bin/
+dist/
+build/
+tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+testdata/
+coverage.out
+*.test
+
+# Assets and uploads (usually generated or uploaded at runtime)
+assets/uploads/
+assets/temp/
+
+# Dependencies (will be downloaded during build)
+vendor/
+
+# Air (hot reload tool)
+.air.toml
+tmp/
+
+# Docker files
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Makefile (not needed in container)
+Makefile
+
+# Logs
+*.log
+logs/
+
+# OS files
+Thumbs.db

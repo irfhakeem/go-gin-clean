@@ -7,7 +7,7 @@ help: ## Display this help message
 # Docker commands
 docker-up: ## Start development environment (PostgreSQL, Redis, RabbitMQ)
 	@echo "Starting development environment..."
-	@docker-compose -f docker-compose.dev.yml up -d
+	@docker-compose up -d
 	@echo "Waiting for services to be ready..."
 	@sleep 5
 	@echo "Services started successfully!"
@@ -17,14 +17,14 @@ docker-up: ## Start development environment (PostgreSQL, Redis, RabbitMQ)
 
 docker-down: ## Stop development environment
 	@echo "Stopping development environment..."
-	@docker-compose -f docker-compose.dev.yml down
+	@docker-compose down
 
 docker-logs: ## View logs from development services
-	@docker-compose -f docker-compose.dev.yml logs -f
+	@docker-compose logs -f
 
 docker-clean: ## Stop and remove all containers, volumes, and networks
 	@echo "Cleaning up development environment..."
-	@docker-compose -f docker-compose.dev.yml down -v
+	@docker-compose down -v
 	@echo "Cleanup completed!"
 
 # Golang-migrate commands (recommended for production)

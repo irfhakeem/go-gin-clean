@@ -33,8 +33,6 @@ RUN addgroup -g 1001 -S appgroup && \
 # Set working directory
 WORKDIR /app
 
-COPY --from=builder /app/.env .
-
 # Copy the binary from builder stage, migrations, and other necessary files
 COPY --from=builder /app/main .
 COPY --from=builder /app/migrate .
