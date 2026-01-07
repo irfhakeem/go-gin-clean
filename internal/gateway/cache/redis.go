@@ -33,23 +33,33 @@ func (r *RedisService) Set(ctx context.Context, key string, value any) error {
 	return r.client.Set(ctx, key, data, exp).Err()
 }
 
-func (r *RedisService) Get(ctx context.Context, key string) (any, error) {
+func (r *RedisService) Get(ctx context.Context, key string, dest any) error {
 	val, err := r.client.Get(ctx, key).Result()
 	if err == redis.Nil {
-		return nil, nil
+		return redis.Nil
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var result any
-	if err := json.Unmarshal([]byte(val), &result); err != nil {
-		return nil, err
-	}
-	return result, nil
+	return json.Unmarshal([]byte(val), dest)
+}
+
+func (r *RedisService) GetString(ctx context.Context, key string) (string, error) {
+	return r.client.Get(ctx, key).Result()
 }
 
 func (r *RedisService) Delete(ctx context.Context, key string) error {
 	return r.client.Del(ctx, key).Err()
+}
+
+func (r *RedisService) DeletePattern(ctx context.Context, pattern string) error {
+	iter := r.client.Scan(ctx, 0, pattern, 0).Iterator()
+	for iter.Next(ctx) {
+		if err := r.client.Del(ctx, iter.Val()).Err(); err != nil {
+			return err
+		}
+	}
+	return iter.Err()
 }
 
 func (r *RedisService) Exists(ctx context.Context, key string) (bool, error) {
@@ -58,4 +68,12 @@ func (r *RedisService) Exists(ctx context.Context, key string) (bool, error) {
 		return false, err
 	}
 	return res > 0, nil
+}
+
+func (r *RedisService) SetWithExpiration(ctx context.Context, key string, value any, expiration time.Duration) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return r.client.Set(ctx, key, data, expiration).Err()
 }

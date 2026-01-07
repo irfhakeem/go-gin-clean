@@ -16,6 +16,8 @@ import (
 	"go-gin-clean/pkg/errors"
 	"strings"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type UserUseCase struct {
@@ -454,9 +456,52 @@ func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswor
 }
 
 func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, search string) (*model.PaginationResponse[model.UserInfo], error) {
-	offset := model.Offset(page, pageSize)
-	users, total, err := u.userRepo.FindAll(ctx, pageSize, offset, search)
-	if err != nil {
+	// Create cache key
+	cacheKey := fmt.Sprintf("users:all:page:%d:size:%d:search:%s", page, pageSize, search)
+
+	// Try to get from cache
+	var cachedResult model.PaginationResponse[model.UserInfo]
+	err := u.redisService.Get(ctx, cacheKey, &cachedResult)
+	if err == nil {
+		log.Printf("Cache HIT for key: %s", cacheKey)
+		return &cachedResult, nil
+	}
+
+	if err != redis.Nil {
+		log.Printf("Cache error: %v", err)
+	} else {
+		log.Printf("Cache MISS for key: %s", cacheKey)
+		// Create cache key
+		cacheKey := fmt.Sprintf("user:code:%s", code)
+
+		// Try to get from cache
+		var cachedUser model.UserInfo
+		err := u.redisService.Get(ctx, cacheKey, &cachedUser)
+		if err == nil {
+			log.Printf("Cache HIT for user: %s", code)
+			return &cachedUser, nil
+		}
+
+		if err != redis.Nil {
+			log.Printf("Cache error: %v", err)
+		} else {
+			log.Printf("Cache MISS for user: %s", code)
+		}
+
+		// Get from database
+		user, err := u.userRepo.FindByCode(ctx, code)
+		if err != nil {
+			return nil, errors.ErrUserNotFound
+		}
+
+		userInfo := formatUserInfo(user)
+
+		// Store in cache (10 minutes expiration)
+		if err := u.redisService.SetWithExpiration(ctx, cacheKey, userInfo, 10*time.Minute); err != nil {
+			log.Printf("Failed to cache user: %v", err)
+		}
+
+		return userInfo
 		return nil, err
 	}
 
@@ -465,7 +510,14 @@ func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, searc
 		userInfos[i] = *formatUserInfo(user)
 	}
 
-	return model.NewPaginationResponse(userInfos, page, pageSize, int(total)), nil
+	result := model.NewPaginationResponse(userInfos, page, pageSize, int(total))
+
+	// Store in cache (5 minutes expiration)
+	if err := u.redisService.SetWithExpiration(ctx, cacheKey, result, 5*time.Minute); err != nil {
+		log.Printf("Failed to cache result: %v", err)
+	}
+
+	return result, nil
 }
 
 func (u *UserUseCase) GetUserByCode(ctx context.Context, code string) (*model.UserInfo, error) {
@@ -496,6 +548,13 @@ func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserReque
 	if err != nil {
 		return nil, err
 	}
+
+	// Invalidate cache for all users list
+	go func() {
+		if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
+			log.Printf("Failed to invalidate users cache: %v", err)
+		}
+	}()
 
 	return formatUserInfo(savedUser), nil
 }
@@ -540,6 +599,17 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.Up
 		return nil, err
 	}
 
+	// Invalidate cache for this user and all users list
+	go func() {
+		cacheKey := fmt.Sprintf("user:code:%s", code)
+		if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
+			log.Printf("Failed to invalidate user cache: %v", err)
+		}
+		if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
+			log.Printf("Failed to invalidate users cache: %v", err)
+		}
+	}()
+
 	return formatUserInfo(updatedUser), nil
 }
 
@@ -573,6 +643,20 @@ func (u *UserUseCase) ChangeStatus(ctx context.Context, code string, req model.C
 	user.IsActive = req.IsActive
 
 	_, err = u.userRepo.Update(ctx, user, user.Code)
+
+	// Invalidate cache for this user and all users list
+	if err == nil {
+		go func() {
+			cacheKey := fmt.Sprintf("user:code:%s", code)
+			if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
+				log.Printf("Failed to invalidate user cache: %v", err)
+			}
+			if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
+				log.Printf("Failed to invalidate users cache: %v", err)
+			}
+		}()
+	}
+
 	return err
 }
 
