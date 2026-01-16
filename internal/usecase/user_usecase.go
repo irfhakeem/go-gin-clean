@@ -201,7 +201,7 @@ func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*mode
 
 	return &model.LoginResponse{
 		AccessToken:  accessToken,
-		RefreshToken: hashedRefreshToken,
+		RefreshToken: refreshToken,
 	}, nil
 }
 
@@ -302,7 +302,8 @@ func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken strin
 	}
 
 	return &model.RefreshTokenResponse{
-		AccessToken: newAccessToken,
+		AccessToken:  newAccessToken,
+		RefreshToken: newRefreshToken,
 	}, nil
 }
 
