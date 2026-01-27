@@ -42,14 +42,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error connecting to RabbitMQ: %v", err)
 	}
-	defer func() {
-		if ch != nil {
-			ch.Close()
-		}
-		if conn != nil {
-			conn.Close()
-		}
-	}()
 
 	container := infrastructure.NewContainer(db, ch, cfg)
 
@@ -81,6 +73,20 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Server forced to shutdown (timeout): %v", err)
+	}
+
+	if db != nil {
+		dbSQL, err := db.DB()
+		if err == nil {
+			dbSQL.Close()
+		}
+	}
+
+	if ch != nil {
+		ch.Close()
+	}
+	if conn != nil {
+		conn.Close()
 	}
 
 	log.Println("Server exiting")
