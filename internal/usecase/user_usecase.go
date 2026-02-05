@@ -14,6 +14,7 @@ import (
 	"go-gin-clean/internal/repository"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/errors"
+	"go-gin-clean/pkg/utils"
 	"strings"
 	"time"
 
@@ -73,6 +74,18 @@ func formatUserInfo(user *entity.User) *model.UserInfo {
 	}
 }
 
+// isValidImageExtension checks if the file extension is allowed for images
+func isValidImageExtension(filename string) bool {
+	allowedExtensions := []string{".jpg", ".jpeg", ".png"}
+	filename = strings.ToLower(filename)
+	for _, ext := range allowedExtensions {
+		if strings.HasSuffix(filename, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider string, appID string) (*model.OAuthUrlResponse, error) {
 	var authURL string
 
@@ -96,12 +109,11 @@ func (u *UserUseCase) HandleOAuthCallback(ctx context.Context, req *model.OAuthC
 	switch req.Provider {
 	case "google":
 		user, appID, err = u.oauthService.HandleGoogleCallback(ctx, req.State, req.Code)
+		if err != nil {
+			return nil, appID, errors.ErrOAuthCallback
+		}
 	default:
 		return nil, appID, errors.ErrInvalidOAuthProvider
-	}
-
-	if err != nil {
-		return nil, appID, fmt.Errorf("OAuth callback error: %w", err)
 	}
 
 	existingUser, err := u.userRepo.FindByOAuthID(ctx, req.Provider, user.OAuthID)
@@ -117,37 +129,37 @@ func (u *UserUseCase) HandleOAuthCallback(ctx context.Context, req *model.OAuthC
 				user.OAuthID,
 			)
 			if err != nil {
-				return nil, "", fmt.Errorf("failed to link OAuth to existing account: %w", err)
+				return nil, appID, errors.ErrLinkOAuth
 			}
 
 			user = existingUserByEmail
 		} else {
 			user, err = u.userRepo.Create(ctx, user)
 			if err != nil {
-				return nil, "", fmt.Errorf("failed to create user: %w", err)
+				return nil, appID, errors.ErrOAuthSignUp
 			}
 		}
 	}
 
 	accessToken, _, err := u.jwtService.GenerateAccessToken(user)
 	if err != nil {
-		return nil, "", err
+		return nil, appID, errors.ErrAccessToken
 	}
 
 	refreshToken, expiryAt, err := u.jwtService.GenerateRefreshToken(user.PKID)
 	if err != nil {
-		return nil, "", err
+		return nil, appID, errors.ErrRefreshToken
 	}
 
 	hashedRefreshToken, err := u.aesService.EncryptInternal(refreshToken)
 	if err != nil {
-		return nil, "", err
+		return nil, appID, errors.ErrProcessToken
 	}
 
 	tokenData := entity.NewRefreshToken(user.PKID, hashedRefreshToken, expiryAt, false, *user)
 
 	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, "", err
+		return nil, appID, errors.ErrRefreshToken
 	}
 
 	return &model.LoginResponse{
@@ -180,23 +192,23 @@ func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*mode
 
 	accessToken, _, err := u.jwtService.GenerateAccessToken(user)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrAccessToken
 	}
 
 	refreshToken, expiryAt, err := u.jwtService.GenerateRefreshToken(user.PKID)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrRefreshToken
 	}
 
 	hashedRefreshToken, err := u.aesService.EncryptInternal(refreshToken)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrProcessToken
 	}
 
 	tokenData := entity.NewRefreshToken(user.PKID, hashedRefreshToken, expiryAt, false, *user)
 
 	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, err
+		return nil, errors.ErrRefreshToken
 	}
 
 	return &model.LoginResponse{
@@ -210,14 +222,18 @@ func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) 
 		return errors.ErrEmailAlreadyExists
 	}
 
+	if !utils.PasswordMeetsCriteria(req.Password) {
+		return errors.ErrPasswordNotMeetsCriteria
+	}
+
 	hashedPassword, err := u.bcryptService.HashPassword(req.Password)
 	if err != nil {
-		return err
+		return errors.ErrProcessUserPassword
 	}
 
 	userData, err := entity.NewUser(req.Name, req.Email, hashedPassword, "", entity.Other)
 	if err != nil {
-		return err
+		return errors.ErrRegisterFailed
 	}
 
 	if userData == nil {
@@ -226,7 +242,7 @@ func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) 
 
 	savedUser, err := u.userRepo.Create(ctx, userData)
 	if err != nil {
-		return err
+		return errors.ErrCreateUser
 	}
 
 	go func() {
@@ -259,7 +275,7 @@ func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) 
 func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken string) (*model.RefreshTokenResponse, error) {
 	refreshToken, err := u.aesService.DecryptInternal(hashedRefreshToken)
 	if err != nil {
-		return nil, errors.ErrTokenInvalid
+		return nil, errors.ErrProcessToken
 	}
 
 	claims, err := u.jwtService.ValidateRefreshToken(refreshToken)
@@ -278,27 +294,27 @@ func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken strin
 
 	newAccessToken, _, err := u.jwtService.GenerateAccessToken(user)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrAccessToken
 	}
 
 	newRefreshToken, expiryAt, err := u.jwtService.GenerateRefreshToken(user.PKID)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrRefreshToken
 	}
 
 	if err := u.refreshTokenRepo.RevokeByToken(ctx, refreshToken); err != nil {
-		return nil, err
+		return nil, errors.ErrRefreshToken
 	}
 
 	newHashedRefreshToken, err := u.aesService.EncryptInternal(newRefreshToken)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrProcessToken
 	}
 
 	tokenData := entity.NewRefreshToken(user.PKID, newHashedRefreshToken, expiryAt, false, *user)
 
 	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, err
+		return nil, errors.ErrRefreshToken
 	}
 
 	return &model.RefreshTokenResponse{
@@ -308,7 +324,10 @@ func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken strin
 }
 
 func (u *UserUseCase) Logout(ctx context.Context, pkid int64) error {
-	return u.refreshTokenRepo.RevokeAllByUserID(ctx, pkid)
+	if err := u.refreshTokenRepo.RevokeAllByUserID(ctx, pkid); err != nil {
+		return errors.ErrTerminateAllSessions
+	}
+	return nil
 }
 
 func (u *UserUseCase) SendVerifyEmail(ctx context.Context, req model.SendVerifyEmailRequest) error {
@@ -321,7 +340,7 @@ func (u *UserUseCase) SendVerifyEmail(ctx context.Context, req model.SendVerifyE
 
 	token, err := u.aesService.EncryptURLSafe(plainText)
 	if err != nil {
-		return err
+		return errors.ErrPrepareVerificationEmail
 	}
 
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
@@ -347,7 +366,7 @@ func (u *UserUseCase) SendVerifyEmail(ctx context.Context, req model.SendVerifyE
 func (u *UserUseCase) VerifyEmail(ctx context.Context, token string) error {
 	token, err := u.aesService.DecryptURLSafe(token)
 	if err != nil {
-		return errors.ErrTokenInvalid
+		return errors.ErrProcessToken
 	}
 
 	var code string
@@ -378,7 +397,11 @@ func (u *UserUseCase) VerifyEmail(ctx context.Context, token string) error {
 	user.VerifyEmail()
 
 	_, err = u.userRepo.Update(ctx, user, user.Code)
-	return err
+	if err != nil {
+		return errors.ErrActivateUser
+	}
+
+	return nil
 }
 
 func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendResetPasswordRequest) error {
@@ -391,7 +414,7 @@ func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendReset
 
 	token, err := u.aesService.EncryptURLSafe(plainText)
 	if err != nil {
-		return err
+		return errors.ErrPrepareForgotPasswordEmail
 	}
 
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.GetAppURL(), token)
@@ -417,7 +440,7 @@ func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendReset
 func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswordRequest) error {
 	token, err := u.aesService.DecryptURLSafe(req.Token)
 	if err != nil {
-		return errors.ErrTokenInvalid
+		return errors.ErrProcessToken
 	}
 
 	var email string
@@ -445,15 +468,23 @@ func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswor
 		return errors.ErrUserNotFound
 	}
 
+	if !utils.PasswordMeetsCriteria(req.NewPassword) {
+		return errors.ErrPasswordNotMeetsCriteria
+	}
+
 	hashedPassword, err := u.bcryptService.HashPassword(req.NewPassword)
 	if err != nil {
-		return err
+		return errors.ErrProcessUserPassword
 	}
 
 	user.SetPassword(hashedPassword)
 
 	_, err = u.userRepo.Update(ctx, user, user.Code)
-	return err
+	if err != nil {
+		return errors.ErrUpdateUserPassword
+	}
+
+	return nil
 }
 
 func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, search string) (*model.PaginationResponse[model.UserInfo], error) {
@@ -475,7 +506,7 @@ func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, searc
 
 	users, total, err := u.userRepo.FindAll(ctx, page, pageSize, search)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrGetAllUsers
 	}
 
 	userInfos := make([]model.UserInfo, len(users))
@@ -511,7 +542,10 @@ func (u *UserUseCase) GetUserByCode(ctx context.Context, code string) (*model.Us
 	}
 
 	user, err := u.userRepo.FindByCode(ctx, code)
-	if err != nil {
+	if err != nil || user == nil {
+		return nil, errors.ErrGetUserInformation
+	}
+	if !user.IsActive || !user.IsVerified {
 		return nil, errors.ErrUserNotFound
 	}
 
@@ -532,25 +566,23 @@ func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserReque
 
 	hashedPassword, err := u.bcryptService.HashPassword(req.Password)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrProcessUserPassword
 	}
 
 	userData, err := entity.NewUser(req.Name, req.Email, hashedPassword, "", entity.Other)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrInvalidInput
 	}
 
 	savedUser, err := u.userRepo.Create(ctx, userData)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrCreateUser
 	}
 
 	// Invalidate cache for all users list
-	go func() {
-		if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
-			log.Printf("Failed to invalidate users cache: %v", err)
-		}
-	}()
+	if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
+		log.Printf("Failed to invalidate users cache: %v", err)
+	}
 
 	return formatUserInfo(savedUser), nil
 }
@@ -566,6 +598,21 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.Up
 	}
 
 	if req.Avatar != nil {
+		allowedExtensions := []string{".jpg", ".jpeg", ".png"}
+		filename := strings.ToLower(req.Avatar.Filename)
+		isValidExt := false
+
+		for _, ext := range allowedExtensions {
+			if strings.HasSuffix(filename, ext) {
+				isValidExt = true
+				break
+			}
+		}
+
+		if !isValidExt {
+			return nil, errors.ErrUnsupportedImageType
+		}
+
 		// Choose one of the storage services to upload the avatar
 		// path, err := u.cloudinaryService.UploadFile(ctx, req.Avatar.Filename, req.Avatar.Size, *req.Avatar, "users/"+user.Code+"/avatar/")
 		// if err != nil || path == nil {
@@ -592,19 +639,17 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.Up
 
 	updatedUser, err := u.userRepo.Update(ctx, user, user.Code)
 	if err != nil {
-		return nil, err
+		return nil, errors.ErrUpdateUser
 	}
 
 	// Invalidate cache for this user and all users list
-	go func() {
-		cacheKey := fmt.Sprintf("user:code:%s", code)
-		if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
-			log.Printf("Failed to invalidate user cache: %v", err)
-		}
-		if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
-			log.Printf("Failed to invalidate users cache: %v", err)
-		}
-	}()
+	cacheKey := fmt.Sprintf("user:code:%s", code)
+	if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
+		log.Printf("Failed to invalidate user cache: %v", err)
+	}
+	if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
+		log.Printf("Failed to invalidate users cache: %v", err)
+	}
 
 	return formatUserInfo(updatedUser), nil
 }
@@ -621,13 +666,16 @@ func (u *UserUseCase) ChangePassword(ctx context.Context, userPKID int64, req *m
 
 	hashedPassword, err := u.bcryptService.HashPassword(req.NewPassword)
 	if err != nil {
-		return err
+		return errors.ErrProcessUserPassword
 	}
 
 	user.SetPassword(hashedPassword)
 
 	_, err = u.userRepo.Update(ctx, user, user.Code)
-	return err
+	if err != nil {
+		return errors.ErrUpdateUserPassword
+	}
+	return nil
 }
 
 func (u *UserUseCase) ChangeStatus(ctx context.Context, code string, req model.ChangeUserStatusRequest) error {
@@ -639,21 +687,20 @@ func (u *UserUseCase) ChangeStatus(ctx context.Context, code string, req model.C
 	user.IsActive = req.IsActive
 
 	_, err = u.userRepo.Update(ctx, user, user.Code)
-
-	// Invalidate cache for this user and all users list
-	if err == nil {
-		go func() {
-			cacheKey := fmt.Sprintf("user:code:%s", code)
-			if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
-				log.Printf("Failed to invalidate user cache: %v", err)
-			}
-			if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
-				log.Printf("Failed to invalidate users cache: %v", err)
-			}
-		}()
+	if err != nil {
+		return errors.ErrUpdateUserStatus
 	}
 
-	return err
+	// Invalidate cache for this user and all users list
+	cacheKey := fmt.Sprintf("user:code:%s", code)
+	if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
+		log.Printf("Failed to invalidate user cache: %v", err)
+	}
+	if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
+		log.Printf("Failed to invalidate users cache: %v", err)
+	}
+
+	return nil
 }
 
 func (u *UserUseCase) DeleteUser(ctx context.Context, code string) error {
@@ -664,8 +711,22 @@ func (u *UserUseCase) DeleteUser(ctx context.Context, code string) error {
 
 	err = u.refreshTokenRepo.RevokeAllByUserID(ctx, user.PKID)
 	if err != nil {
-		return err
+		return errors.ErrTerminateAllSessions
 	}
 
-	return u.userRepo.Delete(ctx, user.Code)
+	err = u.userRepo.Delete(ctx, user.Code)
+	if err != nil {
+		return errors.ErrDeleteUser
+	}
+
+	// Invalidate cache for this user and all users list
+	cacheKey := fmt.Sprintf("user:code:%s", code)
+	if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
+		log.Printf("Failed to invalidate user cache: %v", err)
+	}
+	if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
+		log.Printf("Failed to invalidate users cache: %v", err)
+	}
+
+	return nil
 }

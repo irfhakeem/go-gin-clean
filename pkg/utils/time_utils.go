@@ -2,26 +2,23 @@ package utils
 
 import "time"
 
-func FormatTimeToString(t time.Time) string {
-	return t.Format(time.RFC3339)
+func FormatTimeToString(t time.Time, format string, zone string) string {
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		loc = time.UTC
+	}
+	return t.In(loc).Format(format)
 }
 
-func ParseStringToTime(tStr string) (time.Time, error) {
-	layouts := []string{
-		time.RFC3339, // ex: 2025-02-15T10:30:00Z
-		"2006-01-02", // ex: 2025-02-15
-	}
-
-	var t time.Time
-	var err error
-	for _, layout := range layouts {
-		t, err = time.Parse(layout, tStr)
+func ParseStringToTime(tStr string, format string, zone *string) (time.Time, error) {
+	loc := time.UTC
+	if zone != nil {
+		location, err := time.LoadLocation(*zone)
 		if err == nil {
-			break
+			loc = location
 		}
 	}
-
-	return t, err
+	return time.ParseInLocation(format, tStr, loc)
 }
 
 func SetDefaultTime(t time.Time) time.Time {

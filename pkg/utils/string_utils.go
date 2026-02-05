@@ -76,20 +76,6 @@ func GeneratePassword(length int, includeSpecialChars bool) string {
 	return string(result)
 }
 
-func GenerateInitials(s string) string {
-	reg := regexp.MustCompile(`[^a-zA-Z0-9]`)
-	s = reg.ReplaceAllString(s, "")
-	s = strings.ToUpper(s)
-
-	result := make([]byte, 0, 3)
-	for i := 0; i < 3; i++ {
-		idx := rand.Intn(len(s))
-		result = append(result, s[idx])
-	}
-
-	return string(result)
-}
-
 func ParseAllowedOrigins(originsStr string) []string {
 	if originsStr == "" {
 		return []string{}
@@ -125,4 +111,32 @@ func ParseFrontendURLs(urlsStr string) map[string]string {
 
 func FormatPKIDToStr(pkid int64) string {
 	return strconv.FormatInt(pkid, 10)
+}
+
+func PasswordMeetsCriteria(password string) bool {
+	const minLen = 8
+	const maxLen = 16
+
+	var hasMinLen, hasUpper, hasLower, hasNumber, belowMaxLen bool
+
+	if len(password) >= minLen {
+		hasMinLen = true
+	}
+
+	if len(password) <= maxLen {
+		belowMaxLen = true
+	}
+
+	for _, char := range password {
+		switch {
+		case 'A' <= char && char <= 'Z':
+			hasUpper = true
+		case 'a' <= char && char <= 'z':
+			hasLower = true
+		case '0' <= char && char <= '9':
+			hasNumber = true
+		}
+	}
+
+	return hasMinLen && hasUpper && hasLower && hasNumber && belowMaxLen
 }
