@@ -1,6 +1,22 @@
 # Go Gin Clean Architecture
 
-A production-ready Go web application implementing Clean Architecture principles with proper separation of concerns, dependency injection, and modern best practices.
+A production-ready Go web application built with Go 1.24, Gin framework, and Clean Architecture principles. Features include JWT authentication, OAuth 2.0, UUID-based identifiers, Redis caching, file uploads, and async messaging.
+
+## ✨ Key Features
+
+- 🏗️ **Clean Architecture** - Clear separation of concerns with layered design
+- 🔐 **JWT Authentication** - Secure access & refresh token system
+- 🌐 **OAuth 2.0** - Google login integration
+- 🆔 **UUID Identifiers** - Secure, globally unique user IDs
+- 📝 **User Management** - Complete CRUD operations with code-based lookup
+- 📧 **Email Verification** - Secure email verification flow
+- 🔑 **Password Reset** - Token-based password recovery
+- 📤 **File Upload** - Avatar uploads with validation (JPG, JPEG, PNG)
+- 💾 **Redis Caching** - Fast user data retrieval with cache invalidation
+- 📨 **Async Messaging** - Event-driven architecture with RabbitMQ
+- 🔒 **Security** - Bcrypt passwords, AES encryption, CORS protection
+- 🗃️ **Database Migrations** - Version-controlled schema changes
+- 🚀 **Hot Reload** - Fast development with Air
 
 ## 🏗️ Architecture Overview
 
@@ -117,7 +133,9 @@ go-gin-clean/
 │   ├── 000002_create_users_table.up.sql  # Create users table
 │   ├── 000002_create_users_table.down.sql
 │   ├── 000003_create_refresh_tokens_table.up.sql
-│   └── 000003_create_refresh_tokens_table.down.sql
+│   ├── 000003_create_refresh_tokens_table.down.sql
+│   ├── 000004_convert_pkid_to_uuid.up.sql    # Convert IDs to UUID
+│   └── 000004_convert_pkid_to_uuid.down.sql
 │
 ├── assets/                                # Static assets & uploaded files
 ├── .env.example                           # Environment variables template
@@ -140,11 +158,11 @@ go-gin-clean/
 
 ### Prerequisites
 
-- **Go 1.21+** (1.24.3 used in this project)
-- **PostgreSQL 12+** (primary database)
-- **Redis** (optional, for caching)
-- **RabbitMQ** (optional, for async email notifications)
-- **Docker** (optional, for running dependencies)
+- **Go 1.24+** (Go 1.24.3 recommended)
+- **PostgreSQL 12+** with UUID extension support
+- **Redis 6+** (optional, for caching)
+- **RabbitMQ 3.8+** (optional, for async messaging)
+- **Docker & Docker Compose** (optional, for running dependencies)
 
 ### Installation
 
@@ -235,17 +253,27 @@ go-gin-clean/
 
 5. **Run database migrations**
 
-   Choose one of two migration approaches:
+   **Production Migrations (Recommended)**
 
-   **Option A: golang-migrate (Recommended for production)**
+   Use SQL-based migrations for production environments:
+
    ```bash
-   make migrate-up
+   make migrate-up          # Apply all pending migrations
    ```
 
-   **Option B: GORM Auto-migrate (Quick for development)**
+   **Development Auto-Migration (Quick Setup)**
+
+   Use GORM auto-migrate for rapid development:
+
    ```bash
-   make migrate-legacy-up
+   make migrate-legacy-up   # Auto-generate schema from Go models
    ```
+
+   > **Note**:
+   >
+   > - `migrate-up` uses versioned SQL migrations (recommended for production)
+   > - `migrate-legacy-up` uses GORM auto-migrate (quick for development only)
+   > - Production should always use SQL migrations for version control
 
 6. **Start the application**
 
@@ -267,6 +295,38 @@ air
 ```
 
 ## 📚 API Documentation
+
+### Base URL
+
+```
+http://localhost:3000
+```
+
+### Response Format
+
+All API responses follow a consistent structure:
+
+**Success Response:**
+
+```json
+{
+  "success": true,
+  "message": "Operation successful",
+  "data": {
+    /* response data */
+  }
+}
+```
+
+**Error Response:**
+
+```json
+{
+  "success": false,
+  "message": "Error occurred",
+  "error": "Detailed error message"
+}
+```
 
 ### Health Check
 
@@ -313,42 +373,54 @@ Authorization: Bearer <access_token>
 
 ## 🔧 Available Commands
 
-This project uses a `Makefile` for common operations. Run `make help` to see all available commands.
-
 ### Docker Commands
 
 ```bash
-make docker-up           # Start PostgreSQL, Redis, RabbitMQ in Docker
+make docker-up           # Start PostgreSQL, Redis, RabbitMQ containers
 make docker-down         # Stop all Docker services
 make docker-logs         # View Docker service logs
-make docker-clean        # Remove all containers, volumes, and networks
+make docker-clean        # Remove containers, volumes, and networks
 ```
 
 ### Database Migration Commands
 
-**Golang-migrate (Production-ready SQL migrations)**
+#### Production Migrations (SQL-based)
+
+Use these commands for production environments with version-controlled SQL migrations:
 
 ```bash
-make migrate-up          # Run all pending migrations
-make migrate-down        # Rollback last migration
-make migrate-version     # Show current migration version
-make migrate-force VERSION=1  # Force migration to specific version
-make migrate-create NAME=add_users  # Create new migration files
-
-# Raw commands
-go run cmd/migrate/main.go up
-go run cmd/migrate/main.go down
-go run cmd/migrate/main.go version
-go run cmd/migrate/main.go create <migration_name>
+make migrate-up              # Apply all pending migrations
+make migrate-down            # Rollback the last migration
+make migrate-version         # Show current migration version
+make migrate-force VERSION=4 # Force set migration version (use with caution)
+make migrate-create NAME=add_new_feature  # Create new migration files
 ```
 
-**GORM Auto-migrate (Development only)**
+**Direct commands:**
 
 ```bash
-make migrate-legacy-up    # Run GORM auto-migrations
-make migrate-legacy-down  # Drop all tables
-make migrate-legacy-fresh # Drop and recreate tables
+go run cmd/migrate/main.go up          # Apply migrations
+go run cmd/migrate/main.go down        # Rollback migration
+go run cmd/migrate/main.go version     # Check version
+go run cmd/migrate/main.go create <name>  # Create migration
 ```
+
+#### Development Auto-Migration (GORM-based)
+
+Use these commands for rapid development and testing:
+
+```bash
+make migrate-legacy-up       # Auto-generate schema from Go models
+make migrate-legacy-down     # Drop all tables
+make migrate-legacy-fresh    # Drop and recreate all tables
+```
+
+> **Important Notes:**
+>
+> - **Production**: Always use SQL migrations (`migrate-up/down`) for production databases
+> - **Development**: Use auto-migration (`migrate-legacy-up`) for quick local setup
+> - SQL migrations provide version control and rollback capabilities
+> - Auto-migration is destructive and should never be used in production
 
 ### Development Commands
 
@@ -393,4 +465,169 @@ make install-migrate-cli
 
 # Run with hot reload
 air
+
+# Format code
+go fmt ./...
+
+# Lint code
+go vet ./...
+
+# Check for vulnerabilities
+go list -json -m all | nancy sleuth
 ```
+
+## 🛠️ Technology Stack
+
+### Core
+
+- **Go 1.24** - Programming language
+- **Gin** - HTTP web framework
+- **GORM** - ORM library
+
+### Database
+
+- **PostgreSQL** - Primary database
+- **UUID v4** - Unique identifiers (via `pgcrypto`)
+- **golang-migrate** - Database migrations
+
+### Authentication & Security
+
+- **JWT** - JSON Web Tokens (access & refresh tokens)
+- **OAuth 2.0** - Google authentication
+- **Bcrypt** - Password hashing
+- **AES-256** - Symmetric encryption for sensitive data
+
+### Caching & Messaging
+
+- **Redis** - Response caching with TTL
+- **RabbitMQ** - Async event publishing (email notifications)
+
+### File Storage
+
+- **Local Storage** - File system uploads
+- **Cloudinary** - Cloud media storage (optional)
+
+### Development Tools
+
+- **Air** - Hot reload
+- **Docker Compose** - Local development environment
+- **Make** - Task automation
+
+## 📊 Database Schema
+
+### Users Table
+
+- `id` (UUID) - Primary key
+- `code` (VARCHAR) - Unique user code (auto-generated)
+- `name` (VARCHAR) - User full name
+- `email` (VARCHAR) - Unique email address
+- `password` (VARCHAR) - Bcrypt hashed password
+- `avatar` (VARCHAR) - Avatar file path/URL
+- `gender` (ENUM) - Male, Female, Other
+- `role` (ENUM) - Admin, User
+- `is_active` (BOOLEAN) - Account status
+- `is_verified` (BOOLEAN) - Email verification status
+- `oauth_provider` (VARCHAR) - OAuth provider (e.g., "google")
+- `oauth_id` (VARCHAR) - OAuth user ID
+- Audit fields: `created_at`, `updated_at`, `deleted_at`, `is_deleted`
+
+### Refresh Tokens Table
+
+- `id` (UUID) - Primary key
+- `user_id` (UUID) - Foreign key to users
+- `token` (VARCHAR) - Encrypted refresh token
+- `expiry_at` (TIMESTAMP) - Token expiration
+- `is_revoked` (BOOLEAN) - Revocation status
+- Audit fields: `created_at`, `updated_at`, `deleted_at`, `is_deleted`
+
+## 🔐 Security Features
+
+- **JWT Authentication** - Stateless authentication with short-lived access tokens
+- **Refresh Tokens** - Long-lived tokens for obtaining new access tokens
+- **Password Hashing** - Bcrypt with cost factor 10
+- **AES Encryption** - URL-safe encryption for email verification & password reset tokens
+- **OAuth 2.0** - Secure third-party authentication
+- **CORS Protection** - Configurable allowed origins
+- **Rate Limiting** - Prevent abuse (can be added via middleware)
+- **Input Validation** - Request validation using Gin binding
+- **Error Masking** - User-friendly errors without exposing internals
+- **UUID IDs** - No sequential ID enumeration attacks
+
+## 🚀 Deployment
+
+### Environment Variables
+
+Ensure all required environment variables are set:
+
+```bash
+# Copy and configure
+cp .env.example .env
+nano .env
+```
+
+### Build for Production
+
+```bash
+# Build optimized binary
+make build
+
+# Or with custom flags
+go build -ldflags="-s -w" -o bin/server cmd/server/main.go
+```
+
+### Docker Deployment
+
+```bash
+# Build image
+docker build -t go-gin-clean:latest .
+
+# Run container
+docker run -d \
+  --name go-gin-clean \
+  -p 3000:3000 \
+  --env-file .env \
+  go-gin-clean:latest
+```
+
+### Database Migration in Production
+
+```bash
+# Apply migrations before deploying new version
+make migrate-up
+
+# Or using the binary
+./bin/migrate up
+```
+
+## 📝 Common Tasks
+
+### Creating a New Migration
+
+```bash
+make migrate-create NAME=add_user_preferences
+
+# This creates:
+# migrations/000005_add_user_preferences.up.sql
+# migrations/000005_add_user_preferences.down.sql
+```
+
+### Rollback Last Migration
+
+```bash
+make migrate-down
+```
+
+### Invalidate User Cache
+
+Cache is automatically invalidated on:
+
+- User creation
+- User update
+- User deletion
+- Status change
+
+Manual cache invalidation happens in the usecase layer.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
