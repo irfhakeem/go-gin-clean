@@ -1,9 +1,11 @@
 package model
 
+import "github.com/google/uuid"
+
 type (
 	UserEvent struct {
-		UserPKID int64  `json:"user_pkid"`
-		Name     string `json:"name"`
+		UserID uuid.UUID `json:"user_id"`
+		Name   string    `json:"name"`
 	}
 
 	RegisterEvent struct {

@@ -4,7 +4,6 @@ import (
 	"math/rand"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 )
 
@@ -109,8 +108,8 @@ func ParseFrontendURLs(urlsStr string) map[string]string {
 	return frontendURLs
 }
 
-func FormatPKIDToStr(pkid int64) string {
-	return strconv.FormatInt(pkid, 10)
+func FormatIDToStr(id string) string {
+	return id
 }
 
 func PasswordMeetsCriteria(password string) bool {

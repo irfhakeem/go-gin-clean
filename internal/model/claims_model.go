@@ -1,9 +1,13 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type AccessTokenClaims struct {
-	UserPKID  int64     `json:"user_pkid"`
+	UserID    uuid.UUID `json:"user_id"`
 	UserCode  string    `json:"user_code"`
 	UserRole  string    `json:"user_role"`
 	TokenType string    `json:"token_type"`
@@ -15,7 +19,7 @@ type AccessTokenClaims struct {
 }
 
 type RefreshTokenClaims struct {
-	UserPKID  int64     `json:"user_pkid"`
+	UserID    uuid.UUID `json:"user_id"`
 	TokenType string    `json:"token_type"`
 	ExpiresAt time.Time `json:"expires_at"`
 	IssuedAt  time.Time `json:"issued_at"`

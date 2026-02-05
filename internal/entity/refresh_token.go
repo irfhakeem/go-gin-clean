@@ -1,15 +1,19 @@
 package entity
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type RefreshToken struct {
-	PKID      int64     `gorm:"primaryKey;autoIncrement;column:pkid"`
-	UserPKID  int64     `gorm:"not null;column:user_pkid"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid();column:id"`
+	UserID    uuid.UUID `gorm:"type:uuid;not null;column:user_id"`
 	Token     string    `gorm:"not null;unique"`
 	ExpiryAt  time.Time `gorm:"not null;type:timestamp"`
 	IsRevoked bool      `gorm:"default:false;not null"`
 
-	User User `gorm:"foreignKey:UserPKID;references:PKID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	User User `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	Audit
 }
@@ -18,9 +22,9 @@ func (RefreshToken) TableName() string {
 	return "refresh_tokens"
 }
 
-func NewRefreshToken(userID int64, token string, expiryAt time.Time, isRevoked bool, user User) *RefreshToken {
+func NewRefreshToken(userID uuid.UUID, token string, expiryAt time.Time, isRevoked bool, user User) *RefreshToken {
 	return &RefreshToken{
-		UserPKID:  userID,
+		UserID:    userID,
 		Token:     token,
 		ExpiryAt:  expiryAt,
 		IsRevoked: isRevoked,
@@ -28,12 +32,12 @@ func NewRefreshToken(userID int64, token string, expiryAt time.Time, isRevoked b
 	}
 }
 
-func (rf *RefreshToken) GetID() int64 {
-	return rf.PKID
+func (rf *RefreshToken) GetID() uuid.UUID {
+	return rf.ID
 }
 
-func (rf *RefreshToken) GetUserID() int64 {
-	return rf.UserPKID
+func (rf *RefreshToken) GetUserID() uuid.UUID {
+	return rf.UserID
 }
 
 func (rf *RefreshToken) GetToken() string {

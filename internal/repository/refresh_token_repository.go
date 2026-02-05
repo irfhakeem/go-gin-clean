@@ -23,8 +23,8 @@ func NewRefreshTokenRepository(db *gorm.DB) *RefreshTokenRepository {
 
 func (r *RefreshTokenRepository) Save(ctx context.Context, token *entity.RefreshToken) error {
 	return r.db.WithContext(ctx).Exec(
-		"INSERT INTO refresh_tokens (token, user_pkid, is_revoked, expiry_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-		token.Token, token.UserPKID, token.IsRevoked, token.ExpiryAt, token.CreatedAt, token.UpdatedAt,
+		"INSERT INTO refresh_tokens (token, user_id, is_revoked, expiry_at, created_at, updated_at) VALUES (?, ?::uuid, ?, ?, ?, ?)",
+		token.Token, token.UserID.String(), token.IsRevoked, token.ExpiryAt, token.CreatedAt, token.UpdatedAt,
 	).Error
 }
 
@@ -32,13 +32,13 @@ func (r *RefreshTokenRepository) FindByToken(ctx context.Context, token string) 
 	return r.baseRepo.FindFirst(ctx, "token = ? AND is_revoked = ? AND expiry_at > ?", token, false, time.Now())
 }
 
-func (r *RefreshTokenRepository) FindByUserID(ctx context.Context, userID int64) ([]*entity.RefreshToken, error) {
-	return r.baseRepo.Where(ctx, "user_pkid = ?", userID)
+func (r *RefreshTokenRepository) FindByUserID(ctx context.Context, userID string) ([]*entity.RefreshToken, error) {
+	return r.baseRepo.Where(ctx, "user_id = ?::uuid", userID)
 }
 
-func (r *RefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID int64) error {
+func (r *RefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID string) error {
 	return r.db.WithContext(ctx).Model(&entity.RefreshToken{}).
-		Where("user_pkid = ?", userID).
+		Where("user_id = ?::uuid", userID).
 		Update("is_revoked", true).Error
 }
 

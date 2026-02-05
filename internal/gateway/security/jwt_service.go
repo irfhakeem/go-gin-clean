@@ -5,10 +5,10 @@ import (
 	"go-gin-clean/internal/model"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/errors"
-	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 )
 
 type JWTService struct {
@@ -19,12 +19,17 @@ func NewJWTService(cfg *config.JWTConfig) *JWTService {
 	return &JWTService{cfg: cfg}
 }
 
+// ParseUUID parses a string to UUID
+func ParseUUID(s string) (uuid.UUID, error) {
+	return uuid.Parse(s)
+}
+
 func (j *JWTService) GenerateAccessToken(user *entity.User) (string, time.Time, error) {
 	now := time.Now()
 	expiryAt := now.Add(j.cfg.AccessTokenExpiry)
 
 	claims := jwt.MapClaims{
-		"user_pkid":  user.PKID,
+		"user_id":    user.ID.String(),
 		"user_code":  user.Code,
 		"user_role":  user.Role,
 		"token_type": "access",
@@ -32,7 +37,7 @@ func (j *JWTService) GenerateAccessToken(user *entity.User) (string, time.Time, 
 		"iat":        now.Unix(),
 		"nbf":        now.Unix(),
 		"iss":        j.cfg.JWTIssuer,
-		"sub":        strconv.FormatInt(user.PKID, 10),
+		"sub":        user.ID.String(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -44,18 +49,18 @@ func (j *JWTService) GenerateAccessToken(user *entity.User) (string, time.Time, 
 	return tokenString, expiryAt, nil
 }
 
-func (j *JWTService) GenerateRefreshToken(userPKID int64) (string, time.Time, error) {
+func (j *JWTService) GenerateRefreshToken(userID string) (string, time.Time, error) {
 	now := time.Now()
 	expiryAt := now.Add(j.cfg.RefreshTokenExpiry)
 
 	claims := jwt.MapClaims{
-		"user_pkid":  userPKID,
+		"user_id":    userID,
 		"token_type": "refresh",
 		"exp":        expiryAt.Unix(),
 		"iat":        now.Unix(),
 		"nbf":        now.Unix(),
 		"iss":        j.cfg.JWTIssuer,
-		"sub":        strconv.FormatInt(userPKID, 10),
+		"sub":        userID,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -93,7 +98,7 @@ func (j *JWTService) ValidateAccessToken(tokenString string) (*model.AccessToken
 		return nil, errors.ErrTokenInvalid
 	}
 
-	userPKID, ok := claims["user_pkid"].(float64)
+	userID, ok := claims["user_id"].(string)
 	if !ok {
 		return nil, errors.ErrInvalidClaims
 	}
@@ -133,8 +138,13 @@ func (j *JWTService) ValidateAccessToken(tokenString string) (*model.AccessToken
 		return nil, errors.ErrInvalidClaims
 	}
 
+	uuid, err := ParseUUID(userID)
+	if err != nil {
+		return nil, errors.ErrInvalidClaims
+	}
+
 	return &model.AccessTokenClaims{
-		UserPKID:  int64(userPKID),
+		UserID:    uuid,
 		UserCode:  userCode,
 		UserRole:  userRole,
 		TokenType: tokenType,
@@ -172,7 +182,7 @@ func (j *JWTService) ValidateRefreshToken(tokenString string) (*model.RefreshTok
 		return nil, errors.ErrTokenInvalid
 	}
 
-	userPKID, ok := claims["user_pkid"].(float64)
+	userID, ok := claims["user_id"].(string)
 	if !ok {
 		return nil, errors.ErrInvalidClaims
 	}
@@ -202,8 +212,13 @@ func (j *JWTService) ValidateRefreshToken(tokenString string) (*model.RefreshTok
 		return nil, errors.ErrInvalidClaims
 	}
 
+	uuid, err := ParseUUID(userID)
+	if err != nil {
+		return nil, errors.ErrInvalidClaims
+	}
+
 	return &model.RefreshTokenClaims{
-		UserPKID:  int64(userPKID),
+		UserID:    uuid,
 		TokenType: tokenType,
 		ExpiresAt: time.Unix(int64(exp), 0),
 		IssuedAt:  time.Unix(int64(iat), 0),

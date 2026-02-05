@@ -26,8 +26,8 @@ func (r *UserRepository) FindAll(ctx context.Context, limit, offset int, search 
 	return r.baseRepo.FindAll(ctx, limit, offset, "name LIKE ? OR email LIKE ?", "%"+search+"%", "%"+search+"%")
 }
 
-func (r *UserRepository) FindByID(ctx context.Context, pkid int64) (*entity.User, error) {
-	return r.baseRepo.FindByID(ctx, pkid)
+func (r *UserRepository) FindByID(ctx context.Context, id string) (*entity.User, error) {
+	return r.baseRepo.FindFirst(ctx, "id = ?::uuid", id)
 }
 
 func (r *UserRepository) FindByCode(ctx context.Context, code string) (*entity.User, error) {
@@ -154,8 +154,8 @@ func (r *UserRepository) FindByOAuthID(ctx context.Context, provider, oauthID st
 }
 
 // UpdateOAuthInfo updates OAuth information for an existing user
-func (r *UserRepository) UpdateOAuthInfo(ctx context.Context, userID int64, provider, oauthID string) error {
-	return r.db.WithContext(ctx).Model(&entity.User{}).Where("pkid = ?", userID).
+func (r *UserRepository) UpdateOAuthInfo(ctx context.Context, userID string, provider, oauthID string) error {
+	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?::uuid", userID).
 		Updates(map[string]interface{}{
 			"oauth_provider": provider,
 			"oauth_id":       oauthID,

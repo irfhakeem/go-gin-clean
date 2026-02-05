@@ -3,11 +3,13 @@ package model
 import (
 	"go-gin-clean/internal/entity"
 	"mime/multipart"
+
+	"github.com/google/uuid"
 )
 
 type (
 	UserInfo struct {
-		PKID     int64         `json:"pkid"`
+		ID       uuid.UUID     `json:"id"`
 		Code     string        `json:"code"`
 		Name     string        `json:"name"`
 		Email    string        `json:"email"`

@@ -85,13 +85,13 @@ func (h *UserHandler) RefreshToken(c *gin.Context) {
 }
 
 func (h *UserHandler) Logout(c *gin.Context) {
-	userID, exists := c.Get("user_pkid")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		response.Error(c, "Unauthorized", "", http.StatusUnauthorized)
 		return
 	}
 
-	err := h.userUseCase.Logout(c.Request.Context(), userID.(int64))
+	err := h.userUseCase.Logout(c.Request.Context(), userID.(string))
 	if err != nil {
 		response.Error(c, "Logout failed", err.Error(), http.StatusInternalServerError)
 		return
@@ -259,7 +259,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 }
 
 func (h *UserHandler) ChangePassword(c *gin.Context) {
-	userPKID, exist := c.Get("user_pkid")
+	userID, exist := c.Get("user_id")
 	if !exist {
 		response.Error(c, "Unauthorized", "user credentials not found", http.StatusUnauthorized)
 		return
@@ -271,7 +271,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	err := h.userUseCase.ChangePassword(c.Request.Context(), userPKID.(int64), &req)
+	err := h.userUseCase.ChangePassword(c.Request.Context(), userID.(string), &req)
 	if err != nil {
 		response.Error(c, "Password change failed", err.Error(), http.StatusBadRequest)
 		return

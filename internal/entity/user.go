@@ -1,5 +1,7 @@
 package entity
 
+import "github.com/google/uuid"
+
 type Role string
 
 const (
@@ -29,16 +31,16 @@ func (g Gender) String() string {
 }
 
 type User struct {
-	PKID       int64  ` gorm:"primaryKey;autoIncrement;column:pkid"`
-	Code       string ` gorm:"uniqueIndex;type:varchar(11);not null"`
-	Name       string ` gorm:"not null"`
-	Email      string ` gorm:"type:varchar(100);uniqueIndex;not null;column:email"`
-	Password   string ` gorm:"type:varchar(255);column:password"`
-	Avatar     string ` gorm:"default:''"`
-	Gender     Gender ` gorm:"type:gender;default:null"`
-	Role       Role   ` gorm:"type:role;default:'User'"`
-	IsActive   bool   ` gorm:"default:true;not null"`
-	IsVerified bool   ` gorm:"default:false;not null"`
+	ID         uuid.UUID ` gorm:"type:uuid;primaryKey;default:gen_random_uuid();column:id"`
+	Code       string    ` gorm:"uniqueIndex;type:varchar(11);not null"`
+	Name       string    ` gorm:"not null"`
+	Email      string    ` gorm:"type:varchar(100);uniqueIndex;not null;column:email"`
+	Password   string    ` gorm:"type:varchar(255);column:password"`
+	Avatar     string    ` gorm:"default:''"`
+	Gender     Gender    ` gorm:"type:gender;default:null"`
+	Role       Role      ` gorm:"type:role;default:'User'"`
+	IsActive   bool      ` gorm:"default:true;not null"`
+	IsVerified bool      ` gorm:"default:false;not null"`
 
 	OAuthProvider string `gorm:"type:varchar(50);column:oauth_provider"`
 	OAuthID       string `gorm:"type:varchar(255);column:oauth_id"`
@@ -79,7 +81,7 @@ func (u *User) Equals(other *User) bool {
 		return false
 	}
 
-	return u.PKID == other.PKID &&
+	return u.ID == other.ID &&
 		u.Name == other.Name &&
 		u.Email == other.Email
 }
