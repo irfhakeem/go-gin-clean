@@ -60,57 +60,55 @@ func (r *UserRepository) Create(ctx context.Context, user *entity.User) (*entity
 		}
 	}()
 
-	// Generate code: U + letter (A-Z) + current date (dd) + current year (yy) + seq (5 digits), max length 11
-	// Example: UA172500001
-
-	// Find the current letter (A-Z) and sequence
-	var letter byte = 'A'
-	var seq int = 1
+	// Generate code: U + current date (dd) + current month (mm) + current year (yy) + seq (7 digits), max length 15
+	// Example: US17112500001
 
 	// Get today's date and year
-	var date, year string
+	var date, month, year string
 	if nowVal := ctx.Value("now"); nowVal != nil {
 		if now, ok := nowVal.(func() string); ok && now != nil {
 			today := now()
 			if len(today) >= 8 {
-				date = today[6:8] // dd
-				year = today[2:4] // yy
+				date = today[6:8]  // dd
+				month = today[4:6] // mm
+				year = today[2:4]  // yy
 			}
 		}
 	}
-	if date == "" || year == "" {
+	if date == "" || month == "" || year == "" {
 		t := time.Now()
 		date = fmt.Sprintf("%02d", t.Day())
+		month = fmt.Sprintf("%02d", t.Month())
 		year = fmt.Sprintf("%02d", t.Year()%100)
 	}
 
-	codePrefix := fmt.Sprintf("U%s%s%s", string(letter), date, year)
-
 	var lastCode string
-	if err := tx.Raw("SELECT code FROM users WHERE code LIKE ? ORDER BY code DESC LIMIT 1", codePrefix+"%").Scan(&lastCode).Error; err != nil {
+	if err := tx.Raw("SELECT last_code FROM sequences WHERE entity_name = 'users' FOR UPDATE").Scan(&lastCode).Error; err != nil {
 		tx.Rollback()
 		return nil, err
 	}
 
-	if len(lastCode) == 11 {
-		// Extract sequence
-		var lastSeq int
-		_, err := fmt.Sscanf(lastCode[6:], "%05d", &lastSeq)
-		if err == nil {
-			seq = lastSeq + 1
-			if seq > 99999 {
-				// Move to next letter
-				letter++
-				if letter > 'Z' {
-					letter = 'A'
-				}
-				seq = 1
-				codePrefix = fmt.Sprintf("U%s%s%s", string(letter), date, year)
+	newSeq := 1
+	currentDateStr := fmt.Sprintf("%s%s%s", date, month, year)
+
+	if len(lastCode) == 15 && lastCode[:2] == "US" {
+		lastDateStr := lastCode[2:8]
+
+		if lastDateStr == currentDateStr {
+			var lastSeqInt int
+			_, err := fmt.Sscanf(lastCode[8:], "%07d", &lastSeqInt)
+			if err == nil {
+				newSeq = lastSeqInt + 1
 			}
 		}
 	}
 
-	user.Code = fmt.Sprintf("%s%05d", codePrefix, seq)
+	user.Code = fmt.Sprintf("US%s%07d", currentDateStr, newSeq)
+
+	if err := tx.Exec("UPDATE sequences SET last_code = ?, updated_at = NOW() WHERE entity_name = 'users'", user.Code).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
 
 	if err := tx.Create(user).Error; err != nil {
 		tx.Rollback()
