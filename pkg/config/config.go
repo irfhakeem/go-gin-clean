@@ -75,6 +75,7 @@ type RabbitMQConfig struct {
 	Port     int
 	Username string
 	Password string
+	Exchange string
 }
 
 type CloudinaryConfig struct {
@@ -140,6 +141,7 @@ func Load() (*Config, error) {
 			Port:     getEnvAsInt("RABBITMQ_PORT", 5672),
 			Username: getEnv("RABBITMQ_USER", "guest"),
 			Password: getEnv("RABBITMQ_PASSWORD", "guest"),
+			Exchange: getEnv("RABBITMQ_EXCHANGE", "main_event_bus"),
 		},
 		Cloudinary: CloudinaryConfig{
 			CloudinaryURL: getEnv("CLOUDINARY_URL", "cloudinary://API_KEY:API_SECRET@CLOUD_NAME"),

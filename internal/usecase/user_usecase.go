@@ -174,7 +174,7 @@ func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*mode
 		return nil, errors.ErrUserNotFound
 	}
 
-	if user.OAuthProvider != "" {
+	if user.IsOAuthUser() {
 		return nil, errors.ErrOAuthUserUseOAuthLogin
 	}
 
@@ -599,17 +599,8 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.Up
 
 	if req.Avatar != nil {
 		allowedExtensions := []string{".jpg", ".jpeg", ".png"}
-		filename := strings.ToLower(req.Avatar.Filename)
-		isValidExt := false
 
-		for _, ext := range allowedExtensions {
-			if strings.HasSuffix(filename, ext) {
-				isValidExt = true
-				break
-			}
-		}
-
-		if !isValidExt {
+		if !utils.IsValidExtension(req.Avatar.Filename, allowedExtensions) {
 			return nil, errors.ErrUnsupportedImageType
 		}
 

@@ -36,7 +36,7 @@ func NewContainer(db *gorm.DB, ch *amqp091.Channel, cfg *config.Config) *Contain
 	redisService := cache.NewRedisService(&cfg.Redis)
 
 	// init message publisher
-	userPublisher := messaging.NewUserPublisher(ch)
+	userPublisher := messaging.NewUserPublisher(ch, cfg.RabbitMQ.Exchange)
 
 	// Init use cases
 	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, jwtService, passwordService, oauthService, aesService, cloudinaryService, localStorageService, redisService, userPublisher)

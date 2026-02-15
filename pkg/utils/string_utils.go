@@ -108,10 +108,6 @@ func ParseFrontendURLs(urlsStr string) map[string]string {
 	return frontendURLs
 }
 
-func FormatIDToStr(id string) string {
-	return id
-}
-
 func PasswordMeetsCriteria(password string) bool {
 	const minLen = 8
 	const maxLen = 16

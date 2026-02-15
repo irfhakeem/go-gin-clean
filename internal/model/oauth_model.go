@@ -20,12 +20,12 @@ type TokenResponse struct {
 }
 
 type OAuthLoginRequest struct {
-	Provider string `json:"provider" binding:"required,oneof=google facebook microsoft"`
+	Provider string `json:"provider" binding:"required,oneof=google"`
 	AppID    string `json:"app_id" binding:"omitempty"`
 }
 
 type OAuthCallbackRequest struct {
-	Provider string `json:"provider" binding:"required,oneof=google facebook microsoft"`
+	Provider string `json:"provider" binding:"required,oneof=google"`
 	Code     string `json:"code" binding:"required"`
 	State    string `json:"state" binding:"required"`
 	AppID    string `json:"app_id" binding:"omitempty"`

@@ -7,19 +7,20 @@ import (
 )
 
 type UserPublisher struct {
+	exchange               string
 	registerPublisher      Publisher[model.RegisterEvent]
 	resetPasswordPublisher Publisher[model.ResetPasswordEvent]
 }
 
-func NewUserPublisher(ch *amqp091.Channel) *UserPublisher {
+func NewUserPublisher(ch *amqp091.Channel, ex string) *UserPublisher {
 	return &UserPublisher{
 		registerPublisher: Publisher[model.RegisterEvent]{
 			ch:       ch,
-			exchange: "pc_main_event_bus",
+			exchange: ex,
 		},
 		resetPasswordPublisher: Publisher[model.ResetPasswordEvent]{
 			ch:       ch,
-			exchange: "pc_main_event_bus",
+			exchange: ex,
 		},
 	}
 }
