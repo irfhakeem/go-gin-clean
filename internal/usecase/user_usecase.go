@@ -11,6 +11,7 @@ import (
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/gateway/security"
 	"go-gin-clean/internal/model"
+	"go-gin-clean/internal/model/validator"
 	"go-gin-clean/internal/repository"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/errors"
@@ -34,6 +35,7 @@ type UserUseCase struct {
 	redisService        *cache.RedisService
 
 	UserPublisher *messaging.UserPublisher
+	userValidator *validator.UserValidator
 }
 
 func NewUserUseCase(
@@ -48,17 +50,20 @@ func NewUserUseCase(
 	redisService *cache.RedisService,
 
 	UserPublisher *messaging.UserPublisher,
+	userValidator *validator.UserValidator,
 ) *UserUseCase {
 	return &UserUseCase{
-		userRepo:          userRepo,
-		refreshTokenRepo:  refreshTokenRepo,
-		jwtService:        jwtService,
-		bcryptService:     bcryptService,
-		oauthService:      oauthService,
-		aesService:        aesService,
-		cloudinaryService: cloudinaryService,
-		redisService:      redisService,
-		UserPublisher:     UserPublisher,
+		userRepo:            userRepo,
+		refreshTokenRepo:    refreshTokenRepo,
+		jwtService:          jwtService,
+		bcryptService:       bcryptService,
+		oauthService:        oauthService,
+		aesService:          aesService,
+		cloudinaryService:   cloudinaryService,
+		localStorageService: localStorageService,
+		redisService:        redisService,
+		UserPublisher:       UserPublisher,
+		userValidator:       userValidator,
 	}
 }
 
@@ -218,12 +223,12 @@ func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*mode
 }
 
 func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) error {
-	if exist := u.userRepo.ExistByEmail(ctx, req.Email); exist {
-		return errors.ErrEmailAlreadyExists
+	if err := u.userValidator.Validate(req); err != nil {
+		return err
 	}
 
-	if !utils.PasswordMeetsCriteria(req.Password) {
-		return errors.ErrPasswordNotMeetsCriteria
+	if exist := u.userRepo.ExistByEmail(ctx, req.Email); exist {
+		return errors.ErrEmailAlreadyExists
 	}
 
 	hashedPassword, err := u.bcryptService.HashPassword(req.Password)
@@ -438,6 +443,10 @@ func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendReset
 }
 
 func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswordRequest) error {
+	if err := u.userValidator.Validate(req); err != nil {
+		return err
+	}
+
 	token, err := u.aesService.DecryptURLSafe(req.Token)
 	if err != nil {
 		return errors.ErrProcessToken
@@ -466,10 +475,6 @@ func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswor
 	user, err := u.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		return errors.ErrUserNotFound
-	}
-
-	if !utils.PasswordMeetsCriteria(req.NewPassword) {
-		return errors.ErrPasswordNotMeetsCriteria
 	}
 
 	hashedPassword, err := u.bcryptService.HashPassword(req.NewPassword)
@@ -560,6 +565,10 @@ func (u *UserUseCase) GetUserByCode(ctx context.Context, code string) (*model.Us
 }
 
 func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserRequest) (*model.UserInfo, error) {
+	if err := u.userValidator.Validate(req); err != nil {
+		return nil, err
+	}
+
 	if u.userRepo.ExistByEmail(ctx, req.Email) {
 		return nil, errors.ErrEmailAlreadyExists
 	}
@@ -588,6 +597,10 @@ func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserReque
 }
 
 func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.UpdateUserRequest) (*model.UserInfo, error) {
+	if err := u.userValidator.Validate(req); err != nil {
+		return nil, err
+	}
+
 	user, err := u.userRepo.FindByCode(ctx, code)
 	if err != nil {
 		return nil, errors.ErrUserNotFound
@@ -646,6 +659,10 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.Up
 }
 
 func (u *UserUseCase) ChangePassword(ctx context.Context, userID string, req *model.ChangePasswordRequest) error {
+	if err := u.userValidator.Validate(req); err != nil {
+		return err
+	}
+
 	user, err := u.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return errors.ErrUserNotFound

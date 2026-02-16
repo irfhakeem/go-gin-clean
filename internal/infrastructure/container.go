@@ -6,6 +6,7 @@ import (
 	"go-gin-clean/internal/gateway/media"
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/gateway/security"
+	"go-gin-clean/internal/model/validator"
 	"go-gin-clean/internal/repository"
 	"go-gin-clean/internal/usecase"
 	"go-gin-clean/pkg/config"
@@ -38,8 +39,11 @@ func NewContainer(db *gorm.DB, ch *amqp091.Channel, cfg *config.Config) *Contain
 	// init message publisher
 	userPublisher := messaging.NewUserPublisher(ch, cfg.RabbitMQ.Exchange)
 
+	// Init validator
+	userValidator := validator.NewUserValidator()
+
 	// Init use cases
-	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, jwtService, passwordService, oauthService, aesService, cloudinaryService, localStorageService, redisService, userPublisher)
+	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, jwtService, passwordService, oauthService, aesService, cloudinaryService, localStorageService, redisService, userPublisher, userValidator)
 
 	// Init handlers
 	userHandler := http.NewUserHandler(userUseCase)

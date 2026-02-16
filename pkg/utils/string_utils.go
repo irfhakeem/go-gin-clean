@@ -107,31 +107,3 @@ func ParseFrontendURLs(urlsStr string) map[string]string {
 
 	return frontendURLs
 }
-
-func PasswordMeetsCriteria(password string) bool {
-	const minLen = 8
-	const maxLen = 16
-
-	var hasMinLen, hasUpper, hasLower, hasNumber, belowMaxLen bool
-
-	if len(password) >= minLen {
-		hasMinLen = true
-	}
-
-	if len(password) <= maxLen {
-		belowMaxLen = true
-	}
-
-	for _, char := range password {
-		switch {
-		case 'A' <= char && char <= 'Z':
-			hasUpper = true
-		case 'a' <= char && char <= 'z':
-			hasLower = true
-		case '0' <= char && char <= '9':
-			hasNumber = true
-		}
-	}
-
-	return hasMinLen && hasUpper && hasLower && hasNumber && belowMaxLen
-}
