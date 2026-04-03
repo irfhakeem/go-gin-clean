@@ -45,7 +45,7 @@ RUN chown appuser:appgroup main
 # Switch to non-root user
 USER appuser
 
-EXPOSE ${INTERNAL_PORT}
+EXPOSE ${SERVER_PORT}
 
 # Run the binary
 CMD ["./main"]

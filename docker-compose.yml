@@ -70,7 +70,7 @@ services:
   #   container_name: go-gin-app
   #   restart: unless-stopped
   #   ports:
-  #     - "${SERVER_PORT:-3000}:3000"
+  #     - "${EXTERNAL_PORT:-3000}:3000"
   #   env_file:
   #     - .env
   #   environment:

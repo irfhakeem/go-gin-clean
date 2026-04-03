@@ -3,6 +3,7 @@ package http
 import (
 	"go-gin-clean/internal/delivery/http/response"
 	"go-gin-clean/internal/model"
+	"go-gin-clean/internal/model/validator"
 	"go-gin-clean/internal/usecase"
 	"net/http"
 
@@ -22,7 +23,7 @@ func NewUserHandler(userUseCase *usecase.UserUseCase) *UserHandler {
 func (h *UserHandler) Login(c *gin.Context) {
 	var req model.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -48,7 +49,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 func (h *UserHandler) Register(c *gin.Context) {
 	var req model.RegisterRequest
 	if err := c.ShouldBind(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -102,7 +103,7 @@ func (h *UserHandler) Logout(c *gin.Context) {
 func (h *UserHandler) SendVerifyEmail(c *gin.Context) {
 	var req model.SendVerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -116,7 +117,7 @@ func (h *UserHandler) SendVerifyEmail(c *gin.Context) {
 func (h *UserHandler) VerifyEmail(c *gin.Context) {
 	var req model.VerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -131,7 +132,7 @@ func (h *UserHandler) VerifyEmail(c *gin.Context) {
 func (h *UserHandler) SendResetPassword(c *gin.Context) {
 	var req model.SendResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -146,7 +147,7 @@ func (h *UserHandler) SendResetPassword(c *gin.Context) {
 func (h *UserHandler) ResetPassword(c *gin.Context) {
 	var req model.ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -181,7 +182,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 
 	var req model.UpdateUserRequest
 	if err := c.ShouldBind(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -229,7 +230,7 @@ func (h *UserHandler) GetUserByCode(c *gin.Context) {
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req model.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -246,7 +247,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 
 	var req model.UpdateUserRequest
 	if err := c.ShouldBind(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -267,7 +268,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 
 	var req model.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 
@@ -284,7 +285,7 @@ func (h *UserHandler) ChangeStatus(c *gin.Context) {
 
 	var req model.ChangeUserStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", err.Error(), http.StatusBadRequest)
+		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
 		return
 	}
 

@@ -13,7 +13,6 @@ type Config struct {
 	Database   DatabaseConfig
 	JWT        JWTConfig
 	OAuth      OAuthConfig
-	Mailer     MailerConfig
 	AES        AESConfig
 	RabbitMQ   RabbitMQConfig
 	Cloudinary CloudinaryConfig
@@ -54,15 +53,8 @@ type OAuthConfig struct {
 
 	OAuthStateString string
 	FrontendURLs     map[string]string
+	MobileDeepLinks  map[string]string
 	DefaultAppID     string
-}
-
-type MailerConfig struct {
-	Host     string
-	Port     int
-	Sender   string
-	Auth     string
-	Password string
 }
 
 type AESConfig struct {
@@ -91,6 +83,15 @@ type RedisConfig struct {
 }
 
 func Load() (*Config, error) {
+	defaultAppID := getEnv("DEFAULT_APP_ID", "default")
+
+	frontendURLs := utils.ParseFrontendURLs(getEnv("FRONTEND_URLS", ""))
+	if len(frontendURLs) == 0 {
+		frontendURLs = map[string]string{
+			defaultAppID: getEnv("FRONTEND_URL", "http://localhost:3120"),
+		}
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Host:        getEnv("SERVER_HOST", "localhost"),
@@ -118,19 +119,13 @@ func Load() (*Config, error) {
 		OAuth: OAuthConfig{
 			GoogleClientID:       getEnv("GOOGLE_CLIENT_ID", "your-google-client-id"),
 			GoogleClientSecret:   getEnv("GOOGLE_CLIENT_SECRET", "your-google-client-secret"),
-			GoogleRedirectURL:    getEnv("GOOGLE_REDIRECT_URL", "http://localhost:3000/oauth/callback/google"),
-			GoogleAllowedOrigins: utils.ParseAllowedOrigins(getEnv("GOOGLE_ALLOWED_ORIGINS", "http://localhost:5000")),
+			GoogleRedirectURL:    getEnv("GOOGLE_REDIRECT_URL", "http://localhost:3121/api/v1/auth/oauth2/google/callback"),
+			GoogleAllowedOrigins: utils.ParseAllowedOrigins(getEnv("GOOGLE_ALLOWED_ORIGINS", "http://localhost:3120")),
 
 			OAuthStateString: getEnv("OAUTH_STATE_STRING", "your-random-state-string"),
-			FrontendURLs:     utils.ParseFrontendURLs(getEnv("FRONTEND_URL", "http://localhost:5000:default")),
-			DefaultAppID:     getEnv("DEFAULT_APP_ID", "default"),
-		},
-		Mailer: MailerConfig{
-			Host:     getEnv("MAILER_HOST", "smtp.example.com"),
-			Port:     getEnvAsInt("MAILER_PORT", 587),
-			Sender:   getEnv("MAILER_SENDER", "Go.Gin.Hexagonal <no-reply@testing.com>"),
-			Auth:     getEnv("MAILER_AUTH", "your-authentication-string"),
-			Password: getEnv("MAILER_PASSWORD", "your-email-password"),
+			FrontendURLs:     frontendURLs,
+			MobileDeepLinks:  utils.ParseFrontendURLs(getEnv("MOBILE_DEEP_LINKS", "")),
+			DefaultAppID:     defaultAppID,
 		},
 		AES: AESConfig{
 			Key: getEnv("AES_KEY", "your-aes-encryption-key"),
@@ -147,11 +142,10 @@ func Load() (*Config, error) {
 			CloudinaryURL: getEnv("CLOUDINARY_URL", "cloudinary://API_KEY:API_SECRET@CLOUD_NAME"),
 		},
 		Redis: RedisConfig{
-			Host:       getEnv("REDIS_HOST", "localhost"),
-			Port:       getEnvAsInt("REDIS_PORT", 6379),
-			Password:   getEnv("REDIS_PASSWORD", ""),
-			DB:         getEnvAsInt("REDIS_DB", 0),
-			Expiration: getEnvAsInt("REDIS_EXPIRATION", 600),
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnvAsInt("REDIS_PORT", 6379),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
 	}, nil
 }
@@ -170,7 +164,7 @@ func (c *RabbitMQConfig) DSN() string {
 }
 
 func GetAppURL() string {
-	return getEnv("FRONTEND_URL", "http://localhost:5000")
+	return getEnv("FRONTEND_URL", "http://localhost:3120")
 }
 
 // Helper

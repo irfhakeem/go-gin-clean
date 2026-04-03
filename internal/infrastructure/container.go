@@ -6,7 +6,7 @@ import (
 	"go-gin-clean/internal/gateway/media"
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/gateway/security"
-	"go-gin-clean/internal/model/validator"
+	"go-gin-clean/internal/infrastructure/worker"
 	"go-gin-clean/internal/repository"
 	"go-gin-clean/internal/usecase"
 	"go-gin-clean/pkg/config"
@@ -20,12 +20,14 @@ type Container struct {
 	OauthHandler http.OAuthHandler
 	JWTService   security.JWTService
 	OAuthService security.OAuthService
+	OutboxWorker *worker.OutboxWorker
 }
 
 func NewContainer(db *gorm.DB, ch *amqp091.Channel, cfg *config.Config) *Container {
 	// Init repositories
 	userRepo := repository.NewUserRepository(db)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
+	outboxRepo := repository.NewOutboxRepository(db)
 
 	// Init services
 	jwtService := security.NewJWTService(&cfg.JWT)
@@ -35,24 +37,24 @@ func NewContainer(db *gorm.DB, ch *amqp091.Channel, cfg *config.Config) *Contain
 	cloudinaryService := media.NewCloudinaryService(&cfg.Cloudinary)
 	localStorageService := media.NewLocalStorageService("")
 	redisService := cache.NewRedisService(&cfg.Redis)
-
-	// init message publisher
-	userPublisher := messaging.NewUserPublisher(ch, cfg.RabbitMQ.Exchange)
-
-	// Init validator
-	userValidator := validator.NewUserValidator()
+	publisherService := messaging.NewPublisherService(ch, cfg.RabbitMQ.Exchange)
 
 	// Init use cases
-	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, jwtService, passwordService, oauthService, aesService, cloudinaryService, localStorageService, redisService, userPublisher, userValidator)
+	outboxUseCase := usecase.NewOutboxUseCase(outboxRepo, publisherService, cfg.RabbitMQ.Exchange)
+	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, outboxUseCase, jwtService, passwordService, oauthService, aesService, cloudinaryService, localStorageService, redisService)
 
 	// Init handlers
 	userHandler := http.NewUserHandler(userUseCase)
 	oauthHandler := http.NewOAuthHandler(userUseCase)
+
+	// Init workers
+	outboxWorker := worker.NewOutboxWorker(outboxUseCase)
 
 	return &Container{
 		UserHandler:  *userHandler,
 		OauthHandler: *oauthHandler,
 		JWTService:   *jwtService,
 		OAuthService: *oauthService,
+		OutboxWorker: outboxWorker,
 	}
 }

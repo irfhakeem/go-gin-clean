@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
+	"time"
 
 	"go-gin-clean/internal/entity"
 	"go-gin-clean/internal/gateway/cache"
@@ -11,13 +13,10 @@ import (
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/gateway/security"
 	"go-gin-clean/internal/model"
-	"go-gin-clean/internal/model/validator"
 	"go-gin-clean/internal/repository"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/errors"
 	"go-gin-clean/pkg/utils"
-	"strings"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -25,6 +24,7 @@ import (
 type UserUseCase struct {
 	userRepo         *repository.UserRepository
 	refreshTokenRepo *repository.RefreshTokenRepository
+	outboxUseCase    OutboxUseCaseInterface
 
 	jwtService          *security.JWTService
 	bcryptService       *security.BcryptService
@@ -33,14 +33,12 @@ type UserUseCase struct {
 	cloudinaryService   *media.CloudinaryService
 	localStorageService *media.LocalStorageService
 	redisService        *cache.RedisService
-
-	UserPublisher *messaging.UserPublisher
-	userValidator *validator.UserValidator
 }
 
 func NewUserUseCase(
 	userRepo *repository.UserRepository,
 	refreshTokenRepo *repository.RefreshTokenRepository,
+	outboxUseCase OutboxUseCaseInterface,
 	jwtService *security.JWTService,
 	bcryptService *security.BcryptService,
 	oauthService *security.OAuthService,
@@ -48,13 +46,11 @@ func NewUserUseCase(
 	cloudinaryService *media.CloudinaryService,
 	localStorageService *media.LocalStorageService,
 	redisService *cache.RedisService,
-
-	UserPublisher *messaging.UserPublisher,
-	userValidator *validator.UserValidator,
 ) *UserUseCase {
 	return &UserUseCase{
 		userRepo:            userRepo,
 		refreshTokenRepo:    refreshTokenRepo,
+		outboxUseCase:       outboxUseCase,
 		jwtService:          jwtService,
 		bcryptService:       bcryptService,
 		oauthService:        oauthService,
@@ -62,8 +58,6 @@ func NewUserUseCase(
 		cloudinaryService:   cloudinaryService,
 		localStorageService: localStorageService,
 		redisService:        redisService,
-		UserPublisher:       UserPublisher,
-		userValidator:       userValidator,
 	}
 }
 
@@ -91,12 +85,19 @@ func isValidImageExtension(filename string) bool {
 	return false
 }
 
-func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider string, appID string) (*model.OAuthUrlResponse, error) {
+func (u *UserUseCase) GetOAuthRedirectURL(appID, platform string) string {
+	if platform == "mobile" {
+		return u.oauthService.GetMobileDeepLinkURL(appID)
+	}
+	return u.oauthService.GetFrontendURL(appID)
+}
+
+func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider string, appID string, platform string) (*model.OAuthUrlResponse, error) {
 	var authURL string
 
 	switch provider {
 	case "google":
-		authURL = u.oauthService.GetGoogleAuthURL(appID)
+		authURL = u.oauthService.GetGoogleAuthURL(appID, platform)
 	default:
 		return nil, errors.ErrInvalidOAuthProvider
 	}
@@ -106,71 +107,82 @@ func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider string, app
 	}, nil
 }
 
-func (u *UserUseCase) HandleOAuthCallback(ctx context.Context, req *model.OAuthCallbackRequest) (*model.LoginResponse, string, error) {
+func (u *UserUseCase) HandleOAuthCallback(ctx context.Context, req *model.OAuthCallbackRequest) (*model.LoginResponse, string, string, error) {
 	var user *entity.User
 	var err error
-	var appID string
+	var appID, platform string
 
 	switch req.Provider {
 	case "google":
-		user, appID, err = u.oauthService.HandleGoogleCallback(ctx, req.State, req.Code)
-		if err != nil {
-			return nil, appID, errors.ErrOAuthCallback
-		}
+		user, appID, platform, err = u.oauthService.HandleGoogleCallback(ctx, req.State, req.Code)
 	default:
-		return nil, appID, errors.ErrInvalidOAuthProvider
+		return nil, appID, platform, errors.ErrInvalidOAuthProvider
 	}
 
-	existingUser, err := u.userRepo.FindByOAuthID(ctx, req.Provider, user.OAuthID)
-	if err == nil {
-		user = existingUser
-	} else {
-		existingUserByEmail, err := u.userRepo.FindByEmail(ctx, user.Email)
-		if err == nil {
-			err = u.userRepo.UpdateOAuthInfo(
-				ctx,
-				existingUserByEmail.ID.String(),
-				req.Provider,
-				user.OAuthID,
-			)
-			if err != nil {
-				return nil, appID, errors.ErrLinkOAuth
-			}
+	if err != nil {
+		return nil, appID, platform, errors.ErrOAuthCallback
+	}
 
-			user = existingUserByEmail
-		} else {
-			user, err = u.userRepo.Create(ctx, user)
-			if err != nil {
-				return nil, appID, errors.ErrOAuthSignUp
-			}
+	user, err = u.findOrCreateOAuthUser(ctx, req.Provider, user)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	resp, err := u.issueTokenPair(ctx, user)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	return resp, appID, platform, nil
+}
+
+func (u *UserUseCase) findOrCreateOAuthUser(ctx context.Context, provider string, oauthUser *entity.User) (*entity.User, error) {
+	// 1. Existing OAuth account.
+	if existing, err := u.userRepo.FindByOAuthID(ctx, provider, oauthUser.OAuthID); err == nil {
+		return existing, nil
+	}
+
+	// 2. Existing e-mail account → link OAuth to it.
+	if existing, err := u.userRepo.FindByEmail(ctx, oauthUser.Email); err == nil {
+		if err = u.userRepo.UpdateOAuthInfo(ctx, existing.ID.String(), provider, oauthUser.OAuthID); err != nil {
+			return nil, errors.ErrLinkOAuth
 		}
+		return existing, nil
 	}
 
+	// 3. New user.
+	created, err := u.userRepo.Create(ctx, oauthUser)
+	if err != nil {
+		return nil, errors.ErrOAuthSignUp
+	}
+	return created, nil
+}
+
+func (u *UserUseCase) issueTokenPair(ctx context.Context, user *entity.User) (*model.LoginResponse, error) {
 	accessToken, _, err := u.jwtService.GenerateAccessToken(user)
 	if err != nil {
-		return nil, appID, errors.ErrAccessToken
+		return nil, errors.ErrAccessToken
 	}
 
 	refreshToken, expiryAt, err := u.jwtService.GenerateRefreshToken(user.ID.String())
 	if err != nil {
-		return nil, appID, errors.ErrRefreshToken
+		return nil, errors.ErrRefreshToken
 	}
 
 	hashedRefreshToken, err := u.aesService.EncryptInternal(refreshToken)
 	if err != nil {
-		return nil, appID, errors.ErrProcessToken
+		return nil, errors.ErrProcessToken
 	}
 
 	tokenData := entity.NewRefreshToken(user.ID, hashedRefreshToken, expiryAt, false, *user)
-
 	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, appID, errors.ErrRefreshToken
+		return nil, errors.ErrRefreshToken
 	}
 
 	return &model.LoginResponse{
 		AccessToken:  accessToken,
-		RefreshToken: hashedRefreshToken,
-	}, appID, nil
+		RefreshToken: refreshToken,
+	}, nil
 }
 
 func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*model.LoginResponse, error) {
@@ -223,10 +235,6 @@ func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*mode
 }
 
 func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) error {
-	if err := u.userValidator.Validate(req); err != nil {
-		return err
-	}
-
 	if exist := u.userRepo.ExistByEmail(ctx, req.Email); exist {
 		return errors.ErrEmailAlreadyExists
 	}
@@ -250,29 +258,28 @@ func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) 
 		return errors.ErrCreateUser
 	}
 
-	go func() {
-		plainText := fmt.Sprintf("%s_%s", savedUser.Code, time.Now().Add(24*time.Hour).Format(time.RFC3339))
+	plainText := fmt.Sprintf("%s_%s", savedUser.Code, time.Now().Add(24*time.Hour).Format(time.RFC3339))
 
-		token, err := u.aesService.EncryptURLSafe(plainText)
-		if err != nil {
-			log.Println("Failed to prepare email", err)
-		}
+	token, err := u.aesService.EncryptURLSafe(plainText)
+	if err != nil {
+		log.Println("Failed to prepare email", err)
+		return nil
+	}
 
-		verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
+	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
 
-		message := model.RegisterEvent{
-			UserEvent: model.UserEvent{
-				UserID: savedUser.ID,
-				Name:   savedUser.Name,
-			},
-			Email:           savedUser.Email,
-			VerificationURL: verificationURL,
-		}
+	message := model.RegisterEvent{
+		UserEvent: model.UserEvent{
+			UserID: savedUser.ID,
+			Name:   savedUser.Name,
+		},
+		Email:           savedUser.Email,
+		VerificationURL: verificationURL,
+	}
 
-		if err := u.UserPublisher.RegisterEventPublish(message); err != nil {
-			log.Println("Failed to publish user register event:", err)
-		}
-	}()
+	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", savedUser.ID.String(), messaging.UserRegisteredEvent, message); err != nil {
+		log.Println("Failed to save outbox message for register event:", err)
+	}
 
 	return nil
 }
@@ -359,11 +366,9 @@ func (u *UserUseCase) SendVerifyEmail(ctx context.Context, req model.SendVerifyE
 		VerificationURL: verificationURL,
 	}
 
-	go func() {
-		if err := u.UserPublisher.RegisterEventPublish(message); err != nil {
-			log.Println("Failed to publish user register event:", err)
-		}
-	}()
+	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", user.ID.String(), messaging.UserRegisteredEvent, message); err != nil {
+		log.Println("Failed to save outbox message for verify email event:", err)
+	}
 
 	return nil
 }
@@ -433,20 +438,14 @@ func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendReset
 		ResetURL: resetURL,
 	}
 
-	go func() {
-		if err := u.UserPublisher.ResetPasswordEventPublish(message); err != nil {
-			log.Println("Failed to publish user reset password event:", err)
-		}
-	}()
+	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", user.ID.String(), messaging.UserResetPasswordEvent, message); err != nil {
+		log.Println("Failed to save outbox message for reset password event:", err)
+	}
 
 	return nil
 }
 
 func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswordRequest) error {
-	if err := u.userValidator.Validate(req); err != nil {
-		return err
-	}
-
 	token, err := u.aesService.DecryptURLSafe(req.Token)
 	if err != nil {
 		return errors.ErrProcessToken
@@ -565,10 +564,6 @@ func (u *UserUseCase) GetUserByCode(ctx context.Context, code string) (*model.Us
 }
 
 func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserRequest) (*model.UserInfo, error) {
-	if err := u.userValidator.Validate(req); err != nil {
-		return nil, err
-	}
-
 	if u.userRepo.ExistByEmail(ctx, req.Email) {
 		return nil, errors.ErrEmailAlreadyExists
 	}
@@ -597,10 +592,6 @@ func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserReque
 }
 
 func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.UpdateUserRequest) (*model.UserInfo, error) {
-	if err := u.userValidator.Validate(req); err != nil {
-		return nil, err
-	}
-
 	user, err := u.userRepo.FindByCode(ctx, code)
 	if err != nil {
 		return nil, errors.ErrUserNotFound
@@ -659,10 +650,6 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.Up
 }
 
 func (u *UserUseCase) ChangePassword(ctx context.Context, userID string, req *model.ChangePasswordRequest) error {
-	if err := u.userValidator.Validate(req); err != nil {
-		return err
-	}
-
 	user, err := u.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return errors.ErrUserNotFound

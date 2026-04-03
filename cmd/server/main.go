@@ -10,6 +10,7 @@ import (
 
 	"go-gin-clean/internal/delivery/http/route"
 	"go-gin-clean/internal/infrastructure"
+	"go-gin-clean/internal/model/validator"
 	"go-gin-clean/pkg/config"
 
 	"github.com/gin-gonic/gin"
@@ -45,11 +46,16 @@ func main() {
 
 	container := infrastructure.NewContainer(db, ch, cfg)
 
+	go container.OutboxWorker.Run(rootCtx)
+
 	if cfg.Server.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.Default()
+	if err := validator.RegisterCustomValidations(); err != nil {
+		log.Fatalf("failed to register custom validations: %v", err)
+	}
 
 	route.SetupRoutes(router, &container.UserHandler, &container.OauthHandler, &container.JWTService)
 
