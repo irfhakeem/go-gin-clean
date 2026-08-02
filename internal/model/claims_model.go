@@ -8,7 +8,6 @@ import (
 
 type AccessTokenClaims struct {
 	UserID    uuid.UUID `json:"user_id"`
-	UserCode  string    `json:"user_code"`
 	UserRole  string    `json:"user_role"`
 	TokenType string    `json:"token_type"`
 	ExpiresAt time.Time `json:"expires_at"`

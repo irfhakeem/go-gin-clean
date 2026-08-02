@@ -2,21 +2,22 @@ package http
 
 import (
 	"fmt"
-	"go-gin-clean/internal/delivery/http/response"
-	"go-gin-clean/internal/model"
-	"go-gin-clean/internal/model/validator"
-	"go-gin-clean/internal/usecase"
 	"net/http"
 	"net/url"
+
+	"go-gin-clean/internal/model"
+	"go-gin-clean/internal/usecase"
+	pkgerror "go-gin-clean/pkg/error"
+	"go-gin-clean/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
 
 type OAuthHandler struct {
-	userUseCase *usecase.UserUseCase
+	userUseCase usecase.UserUseCaseInterface
 }
 
-func NewOAuthHandler(userUseCase *usecase.UserUseCase) *OAuthHandler {
+func NewOAuthHandler(userUseCase usecase.UserUseCaseInterface) *OAuthHandler {
 	return &OAuthHandler{
 		userUseCase: userUseCase,
 	}
@@ -25,7 +26,7 @@ func NewOAuthHandler(userUseCase *usecase.UserUseCase) *OAuthHandler {
 func (h *OAuthHandler) GetLoginURL(c *gin.Context) {
 	var req model.OAuthLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to parse JSON", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
@@ -35,11 +36,11 @@ func (h *OAuthHandler) GetLoginURL(c *gin.Context) {
 
 	urlResp, err := h.userUseCase.GetOAuthLoginURL(c.Request.Context(), req.Provider, req.AppID, req.Platform)
 	if err != nil {
-		response.Error(c, "Failed to generate OAuth URL", err.Error(), http.StatusInternalServerError)
+		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, "OAuth URL generated successfully", urlResp, http.StatusOK)
+	response.Success(c, pkgerror.OAuthLoginSuccess, urlResp, http.StatusOK)
 }
 
 func (h *OAuthHandler) CallBack(c *gin.Context) {
@@ -48,7 +49,7 @@ func (h *OAuthHandler) CallBack(c *gin.Context) {
 	state := c.Query("state")
 
 	if code == "" || state == "" {
-		response.Error(c, "Invalid callback", "Missing code or state in callback", http.StatusBadRequest)
+		response.Error(c, pkgerror.BadRequest(pkgerror.ErrOAuthCallback, nil))
 		return
 	}
 
@@ -60,16 +61,39 @@ func (h *OAuthHandler) CallBack(c *gin.Context) {
 
 	result, appID, platform, err := h.userUseCase.HandleOAuthCallback(c.Request.Context(), req)
 	if err != nil {
+		reason := response.Reason(c, err)
 		if platform == "mobile" {
-			h.redirectMobileError(c, appID, err.Error())
+			deepLink := h.userUseCase.GetOAuthRedirectURL(appID, "mobile")
+			if deepLink == "" {
+				response.Error(c, pkgerror.Unauthorized(pkgerror.ErrOAuthCallback, fmt.Errorf("%s", reason)))
+				return
+			}
+
+			params := url.Values{}
+			params.Set("status", "error")
+			params.Set("error", reason)
+			c.Redirect(http.StatusFound, fmt.Sprintf("%s?%s", deepLink, params.Encode()))
 			return
 		}
-		h.redirectWebError(c, appID, err.Error())
+		frontendURL := h.userUseCase.GetOAuthRedirectURL(appID, "web")
+		params := url.Values{}
+		params.Set("error", reason)
+		c.Redirect(http.StatusFound, fmt.Sprintf("%s/oauth/error?%s", frontendURL, params.Encode()))
 		return
 	}
 
 	if platform == "mobile" {
-		h.redirectMobileSuccess(c, appID, result.AccessToken, result.RefreshToken)
+		deepLink := h.userUseCase.GetOAuthRedirectURL(appID, "mobile")
+		if deepLink == "" {
+			response.Error(c, pkgerror.InternalServerError(pkgerror.ErrOAuthCallback, nil))
+			return
+		}
+
+		params := url.Values{}
+		params.Set("status", "success")
+		params.Set("access_token", result.AccessToken)
+		params.Set("refresh_token", result.RefreshToken)
+		c.Redirect(http.StatusFound, fmt.Sprintf("%s?%s", deepLink, params.Encode()))
 		return
 	}
 
@@ -85,39 +109,4 @@ func (h *OAuthHandler) CallBack(c *gin.Context) {
 
 	frontendURL := h.userUseCase.GetOAuthRedirectURL(appID, "web")
 	c.Redirect(http.StatusFound, fmt.Sprintf("%s/oauth/callback#access_token=%s", frontendURL, result.AccessToken))
-}
-
-// Helper
-func (h *OAuthHandler) redirectWebError(c *gin.Context, appID, reason string) {
-	frontendURL := h.userUseCase.GetOAuthRedirectURL(appID, "web")
-	params := url.Values{}
-	params.Set("error", reason)
-	c.Redirect(http.StatusFound, fmt.Sprintf("%s/oauth/error?%s", frontendURL, params.Encode()))
-}
-
-func (h *OAuthHandler) redirectMobileSuccess(c *gin.Context, appID, accessToken, refreshToken string) {
-	deepLink := h.userUseCase.GetOAuthRedirectURL(appID, "mobile")
-	if deepLink == "" {
-		response.Error(c, "Mobile OAuth not configured", "deep link URI is not configured for this app", http.StatusInternalServerError)
-		return
-	}
-
-	params := url.Values{}
-	params.Set("status", "success")
-	params.Set("access_token", accessToken)
-	params.Set("refresh_token", refreshToken)
-	c.Redirect(http.StatusFound, fmt.Sprintf("%s?%s", deepLink, params.Encode()))
-}
-
-func (h *OAuthHandler) redirectMobileError(c *gin.Context, appID, reason string) {
-	deepLink := h.userUseCase.GetOAuthRedirectURL(appID, "mobile")
-	if deepLink == "" {
-		response.Error(c, "OAuth authentication failed", reason, http.StatusUnauthorized)
-		return
-	}
-
-	params := url.Values{}
-	params.Set("status", "error")
-	params.Set("error", reason)
-	c.Redirect(http.StatusFound, fmt.Sprintf("%s?%s", deepLink, params.Encode()))
 }

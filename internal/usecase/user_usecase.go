@@ -2,8 +2,8 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -13,76 +13,72 @@ import (
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/gateway/security"
 	"go-gin-clean/internal/model"
+	"go-gin-clean/internal/model/event"
 	"go-gin-clean/internal/repository"
 	"go-gin-clean/pkg/config"
-	"go-gin-clean/pkg/errors"
+	pkgerror "go-gin-clean/pkg/error"
+	"go-gin-clean/pkg/logger"
 	"go-gin-clean/pkg/utils"
 
-	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
+type UserUseCaseInterface interface {
+	Login(ctx context.Context, req *model.LoginRequest) (*model.LoginResponse, error)
+	Register(ctx context.Context, req *model.RegisterRequest) error
+	RefreshToken(ctx context.Context, hashedRefreshToken string) (*model.RefreshTokenResponse, error)
+	Logout(ctx context.Context, id string) error
+	SendVerifyEmail(ctx context.Context, req model.SendVerifyEmailRequest) error
+	VerifyEmail(ctx context.Context, token string) error
+	SendResetPassword(ctx context.Context, req model.SendResetPasswordRequest) error
+	ResetPassword(ctx context.Context, req *model.ResetPasswordRequest) error
+	GetOAuthLoginURL(ctx context.Context, provider, appID, platform string) (*model.OAuthUrlResponse, error)
+	GetOAuthRedirectURL(appID, platform string) string
+	HandleOAuthCallback(ctx context.Context, req *model.OAuthCallbackRequest) (*model.LoginResponse, string, string, error)
+	GetAllUsers(ctx context.Context, page, pageSize int, search string) (*model.PaginationResponse[model.UserInfo], error)
+	GetUserByID(ctx context.Context, id string) (*model.UserInfo, error)
+	CreateUser(ctx context.Context, req *model.CreateUserRequest) (*model.UserInfo, error)
+	UpdateUser(ctx context.Context, id string, req *model.UpdateUserRequest) (*model.UserInfo, error)
+	ChangePassword(ctx context.Context, userID string, req *model.ChangePasswordRequest) error
+	ChangeStatus(ctx context.Context, id string, req model.ChangeUserStatusRequest) error
+	DeleteUser(ctx context.Context, id string) error
+}
+
 type UserUseCase struct {
-	userRepo         *repository.UserRepository
-	refreshTokenRepo *repository.RefreshTokenRepository
+	userRepo         repository.UserRepositoryInterface
+	refreshTokenRepo repository.RefreshTokenRepositoryInterface
 	outboxUseCase    OutboxUseCaseInterface
 
-	jwtService          *security.JWTService
-	bcryptService       *security.BcryptService
-	oauthService        *security.OAuthService
-	aesService          *security.AESService
-	cloudinaryService   *media.CloudinaryService
-	localStorageService *media.LocalStorageService
-	redisService        *cache.RedisService
+	jwtService     security.JWTServiceInterface
+	bcryptService  security.BcryptServiceInterface
+	oauthService   security.OAuthServiceInterface
+	aesService     security.AESServiceInterface
+	storageService media.StorageServiceInterface
+	redisService   cache.CacheServiceInterface
 }
 
 func NewUserUseCase(
-	userRepo *repository.UserRepository,
-	refreshTokenRepo *repository.RefreshTokenRepository,
+	userRepo repository.UserRepositoryInterface,
+	refreshTokenRepo repository.RefreshTokenRepositoryInterface,
 	outboxUseCase OutboxUseCaseInterface,
-	jwtService *security.JWTService,
-	bcryptService *security.BcryptService,
-	oauthService *security.OAuthService,
-	aesService *security.AESService,
-	cloudinaryService *media.CloudinaryService,
-	localStorageService *media.LocalStorageService,
-	redisService *cache.RedisService,
-) *UserUseCase {
+	jwtService security.JWTServiceInterface,
+	bcryptService security.BcryptServiceInterface,
+	oauthService security.OAuthServiceInterface,
+	aesService security.AESServiceInterface,
+	storageService media.StorageServiceInterface,
+	redisService cache.CacheServiceInterface,
+) UserUseCaseInterface {
 	return &UserUseCase{
-		userRepo:            userRepo,
-		refreshTokenRepo:    refreshTokenRepo,
-		outboxUseCase:       outboxUseCase,
-		jwtService:          jwtService,
-		bcryptService:       bcryptService,
-		oauthService:        oauthService,
-		aesService:          aesService,
-		cloudinaryService:   cloudinaryService,
-		localStorageService: localStorageService,
-		redisService:        redisService,
+		userRepo:         userRepo,
+		refreshTokenRepo: refreshTokenRepo,
+		outboxUseCase:    outboxUseCase,
+		jwtService:       jwtService,
+		bcryptService:    bcryptService,
+		oauthService:     oauthService,
+		aesService:       aesService,
+		storageService:   storageService,
+		redisService:     redisService,
 	}
-}
-
-func formatUserInfo(user *entity.User) *model.UserInfo {
-	return &model.UserInfo{
-		ID:       user.ID,
-		Name:     user.Name,
-		Code:     user.Code,
-		Email:    user.Email,
-		Avatar:   user.Avatar,
-		Gender:   user.Gender,
-		IsActive: user.IsActive,
-	}
-}
-
-// isValidImageExtension checks if the file extension is allowed for images
-func isValidImageExtension(filename string) bool {
-	allowedExtensions := []string{".jpg", ".jpeg", ".png"}
-	filename = strings.ToLower(filename)
-	for _, ext := range allowedExtensions {
-		if strings.HasSuffix(filename, ext) {
-			return true
-		}
-	}
-	return false
 }
 
 func (u *UserUseCase) GetOAuthRedirectURL(appID, platform string) string {
@@ -92,193 +88,157 @@ func (u *UserUseCase) GetOAuthRedirectURL(appID, platform string) string {
 	return u.oauthService.GetFrontendURL(appID)
 }
 
-func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider string, appID string, platform string) (*model.OAuthUrlResponse, error) {
-	var authURL string
-
+func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider, appID, platform string) (*model.OAuthUrlResponse, error) {
 	switch provider {
 	case "google":
-		authURL = u.oauthService.GetGoogleAuthURL(appID, platform)
+		return &model.OAuthUrlResponse{
+			AuthURL: u.oauthService.GetGoogleAuthURL(appID, platform),
+		}, nil
 	default:
-		return nil, errors.ErrInvalidOAuthProvider
+		return nil, pkgerror.InternalServerError(pkgerror.ErrOAuthLoginFailed, pkgerror.ErrInvalidOAuthProvider)
 	}
-
-	return &model.OAuthUrlResponse{
-		AuthURL: authURL,
-	}, nil
 }
 
 func (u *UserUseCase) HandleOAuthCallback(ctx context.Context, req *model.OAuthCallbackRequest) (*model.LoginResponse, string, string, error) {
-	var user *entity.User
-	var err error
-	var appID, platform string
+	var (
+		user     *entity.User
+		appID    string
+		platform string
+		err      error
+	)
 
 	switch req.Provider {
 	case "google":
 		user, appID, platform, err = u.oauthService.HandleGoogleCallback(ctx, req.State, req.Code)
-	default:
-		return nil, appID, platform, errors.ErrInvalidOAuthProvider
-	}
-
-	if err != nil {
-		return nil, appID, platform, errors.ErrOAuthCallback
-	}
-
-	user, err = u.findOrCreateOAuthUser(ctx, req.Provider, user)
-	if err != nil {
-		return nil, "", "", err
-	}
-
-	resp, err := u.issueTokenPair(ctx, user)
-	if err != nil {
-		return nil, "", "", err
-	}
-
-	return resp, appID, platform, nil
-}
-
-func (u *UserUseCase) findOrCreateOAuthUser(ctx context.Context, provider string, oauthUser *entity.User) (*entity.User, error) {
-	// 1. Existing OAuth account.
-	if existing, err := u.userRepo.FindByOAuthID(ctx, provider, oauthUser.OAuthID); err == nil {
-		return existing, nil
-	}
-
-	// 2. Existing e-mail account → link OAuth to it.
-	if existing, err := u.userRepo.FindByEmail(ctx, oauthUser.Email); err == nil {
-		if err = u.userRepo.UpdateOAuthInfo(ctx, existing.ID.String(), provider, oauthUser.OAuthID); err != nil {
-			return nil, errors.ErrLinkOAuth
+		if err != nil {
+			return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrOAuthCallback, err)
 		}
-		return existing, nil
+	default:
+		return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrInvalidOAuthProvider, nil)
 	}
 
-	// 3. New user.
-	created, err := u.userRepo.Create(ctx, oauthUser)
-	if err != nil {
-		return nil, errors.ErrOAuthSignUp
+	existingUser, err := u.userRepo.FindByOAuthID(ctx, req.Provider, user.OAuthID)
+	if err == nil {
+		user = existingUser
+	} else {
+		existingUserByEmail, err := u.userRepo.FindByEmail(ctx, user.Email)
+		if err == nil {
+			if err = u.userRepo.UpdateOAuthInfo(ctx, existingUserByEmail.ID.String(), req.Provider, user.OAuthID); err != nil {
+				return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrLinkOAuth, err)
+			}
+			user = existingUserByEmail
+		} else {
+			user, err = u.userRepo.Create(ctx, user)
+			if err != nil {
+				return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrOAuthSignUp, err)
+			}
+		}
 	}
-	return created, nil
-}
 
-func (u *UserUseCase) issueTokenPair(ctx context.Context, user *entity.User) (*model.LoginResponse, error) {
 	accessToken, _, err := u.jwtService.GenerateAccessToken(user)
 	if err != nil {
-		return nil, errors.ErrAccessToken
+		return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrAccessToken, err)
 	}
 
 	refreshToken, expiryAt, err := u.jwtService.GenerateRefreshToken(user.ID.String())
 	if err != nil {
-		return nil, errors.ErrRefreshToken
+		return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	hashedRefreshToken, err := u.aesService.EncryptInternal(refreshToken)
 	if err != nil {
-		return nil, errors.ErrProcessToken
+		return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrProcessToken, err)
 	}
 
 	tokenData := entity.NewRefreshToken(user.ID, hashedRefreshToken, expiryAt, false, *user)
 	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, errors.ErrRefreshToken
+		return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
-	return &model.LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-	}, nil
+	return model.FormatLoginResponse(accessToken, hashedRefreshToken), appID, platform, nil
 }
 
 func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*model.LoginResponse, error) {
 	user, err := u.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		return nil, errors.ErrUserNotFound
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, err)
 	}
 
 	if user.IsOAuthUser() {
-		return nil, errors.ErrOAuthUserUseOAuthLogin
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, pkgerror.ErrOAuthUserUseOAuthLogin)
 	}
 
 	if !user.IsActive {
-		return nil, errors.ErrUserNotFound
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, pkgerror.ErrUserNotFound)
 	}
 
 	if !user.IsVerified {
-		return nil, errors.ErrEmailNotVerified
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, pkgerror.ErrEmailNotVerified)
 	}
 
 	if err := u.bcryptService.ValidatePassword(req.Password, user.Password); err != nil {
-		return nil, errors.ErrPasswordNotMatch
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, pkgerror.ErrPasswordNotMatch)
 	}
 
 	accessToken, _, err := u.jwtService.GenerateAccessToken(user)
 	if err != nil {
-		return nil, errors.ErrAccessToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, err)
 	}
 
 	refreshToken, expiryAt, err := u.jwtService.GenerateRefreshToken(user.ID.String())
 	if err != nil {
-		return nil, errors.ErrRefreshToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, err)
 	}
 
 	hashedRefreshToken, err := u.aesService.EncryptInternal(refreshToken)
 	if err != nil {
-		return nil, errors.ErrProcessToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, err)
 	}
 
 	tokenData := entity.NewRefreshToken(user.ID, hashedRefreshToken, expiryAt, false, *user)
-
 	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, errors.ErrRefreshToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, err)
 	}
 
-	return &model.LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-	}, nil
+	return model.FormatLoginResponse(accessToken, hashedRefreshToken), nil
 }
 
 func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) error {
 	if exist := u.userRepo.ExistByEmail(ctx, req.Email); exist {
-		return errors.ErrEmailAlreadyExists
+		return pkgerror.BadRequest(pkgerror.ErrRegisterFailed, pkgerror.ErrEmailAlreadyExists)
 	}
 
 	hashedPassword, err := u.bcryptService.HashPassword(req.Password)
 	if err != nil {
-		return errors.ErrProcessUserPassword
+		return pkgerror.BadRequest(pkgerror.ErrRegisterFailed, err)
 	}
 
 	userData, err := entity.NewUser(req.Name, req.Email, hashedPassword, "", entity.Other)
-	if err != nil {
-		return errors.ErrRegisterFailed
-	}
-
-	if userData == nil {
-		return errors.ErrInvalidInput
+	if err != nil || userData == nil {
+		return pkgerror.BadRequest(pkgerror.ErrRegisterFailed, err)
 	}
 
 	savedUser, err := u.userRepo.Create(ctx, userData)
 	if err != nil {
-		return errors.ErrCreateUser
+		return pkgerror.BadRequest(pkgerror.ErrRegisterFailed, err)
 	}
 
-	plainText := fmt.Sprintf("%s_%s", savedUser.Code, time.Now().Add(24*time.Hour).Format(time.RFC3339))
-
+	plainText := fmt.Sprintf("%s_%s", savedUser.ID.String(), time.Now().Add(24*time.Hour).Format(time.RFC3339))
 	token, err := u.aesService.EncryptURLSafe(plainText)
 	if err != nil {
-		log.Println("Failed to prepare email", err)
+		logger.Error("failed to prepare verification email", zap.Error(err))
 		return nil
 	}
 
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
-
-	message := model.RegisterEvent{
-		UserEvent: model.UserEvent{
-			UserID: savedUser.ID,
-			Name:   savedUser.Name,
-		},
+	message := event.RegisterEvent{
+		UserEvent:       event.UserEvent{UserID: savedUser.ID, Name: savedUser.Name},
 		Email:           savedUser.Email,
 		VerificationURL: verificationURL,
 	}
 
 	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", savedUser.ID.String(), messaging.UserRegisteredEvent, message); err != nil {
-		log.Println("Failed to save outbox message for register event:", err)
+		logger.Error("failed to save outbox message for register event", zap.Error(err))
 	}
 
 	return nil
@@ -287,46 +247,45 @@ func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) 
 func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken string) (*model.RefreshTokenResponse, error) {
 	refreshToken, err := u.aesService.DecryptInternal(hashedRefreshToken)
 	if err != nil {
-		return nil, errors.ErrProcessToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	claims, err := u.jwtService.ValidateRefreshToken(refreshToken)
 	if err != nil {
-		return nil, errors.ErrTokenInvalid
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	if !u.refreshTokenRepo.IsTokenValid(ctx, refreshToken) {
-		return nil, errors.ErrTokenInvalid
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, pkgerror.ErrTokenInvalid)
 	}
 
 	user, err := u.userRepo.FindByID(ctx, claims.UserID.String())
 	if err != nil {
-		return nil, errors.ErrUserNotFound
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	newAccessToken, _, err := u.jwtService.GenerateAccessToken(user)
 	if err != nil {
-		return nil, errors.ErrAccessToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	newRefreshToken, expiryAt, err := u.jwtService.GenerateRefreshToken(user.ID.String())
 	if err != nil {
-		return nil, errors.ErrRefreshToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	if err := u.refreshTokenRepo.RevokeByToken(ctx, refreshToken); err != nil {
-		return nil, errors.ErrRefreshToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	newHashedRefreshToken, err := u.aesService.EncryptInternal(newRefreshToken)
 	if err != nil {
-		return nil, errors.ErrProcessToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	tokenData := entity.NewRefreshToken(user.ID, newHashedRefreshToken, expiryAt, false, *user)
-
 	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, errors.ErrRefreshToken
+		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
 	return &model.RefreshTokenResponse{
@@ -337,7 +296,7 @@ func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken strin
 
 func (u *UserUseCase) Logout(ctx context.Context, id string) error {
 	if err := u.refreshTokenRepo.RevokeAllByUserID(ctx, id); err != nil {
-		return errors.ErrTerminateAllSessions
+		return pkgerror.InternalServerError(pkgerror.ErrLogoutFailed, err)
 	}
 	return nil
 }
@@ -345,70 +304,57 @@ func (u *UserUseCase) Logout(ctx context.Context, id string) error {
 func (u *UserUseCase) SendVerifyEmail(ctx context.Context, req model.SendVerifyEmailRequest) error {
 	user, err := u.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		return errors.ErrUserNotFound
+		return pkgerror.InternalServerError(pkgerror.ErrPrepareVerificationEmail, err)
 	}
 
-	plainText := fmt.Sprintf("%s_%s", user.Code, time.Now().Add(24*time.Hour).Format(time.RFC3339))
-
+	plainText := fmt.Sprintf("%s_%s", user.ID.String(), time.Now().Add(24*time.Hour).Format(time.RFC3339))
 	token, err := u.aesService.EncryptURLSafe(plainText)
 	if err != nil {
-		return errors.ErrPrepareVerificationEmail
+		return pkgerror.InternalServerError(pkgerror.ErrPrepareVerificationEmail, err)
 	}
 
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
-
-	message := model.RegisterEvent{
-		UserEvent: model.UserEvent{
-			UserID: user.ID,
-			Name:   user.Name,
-		},
+	message := event.RegisterEvent{
+		UserEvent:       event.UserEvent{UserID: user.ID, Name: user.Name},
 		Email:           user.Email,
 		VerificationURL: verificationURL,
 	}
 
 	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", user.ID.String(), messaging.UserRegisteredEvent, message); err != nil {
-		log.Println("Failed to save outbox message for verify email event:", err)
+		logger.Error("failed to save outbox message for verify email event", zap.Error(err))
 	}
 
 	return nil
 }
 
 func (u *UserUseCase) VerifyEmail(ctx context.Context, token string) error {
-	token, err := u.aesService.DecryptURLSafe(token)
+	decrypted, err := u.aesService.DecryptURLSafe(token)
 	if err != nil {
-		return errors.ErrProcessToken
+		return pkgerror.BadRequest(pkgerror.ErrVerifyEmailFailed, err)
 	}
 
-	var code string
-	var expiry string
-
-	payload := strings.Split(token, "_")
+	payload := strings.Split(decrypted, "_")
 	if len(payload) != 2 {
-		return errors.ErrTokenInvalid
+		return pkgerror.BadRequest(pkgerror.ErrVerifyEmailFailed, pkgerror.ErrTokenInvalid)
 	}
 
-	code = payload[0]
-	expiry = payload[1]
-
-	expiryTime, err := time.Parse(time.RFC3339, expiry)
+	expiryTime, err := time.Parse(time.RFC3339, payload[1])
 	if err != nil {
-		return errors.ErrTokenInvalid
+		return pkgerror.BadRequest(pkgerror.ErrVerifyEmailFailed, err)
 	}
 
 	if time.Now().After(expiryTime) {
-		return errors.ErrTokenExpired
+		return pkgerror.BadRequest(pkgerror.ErrVerifyEmailFailed, pkgerror.ErrTokenExpired)
 	}
 
-	user, err := u.userRepo.FindByCode(ctx, code)
+	user, err := u.userRepo.FindByID(ctx, payload[0])
 	if err != nil {
-		return errors.ErrUserNotFound
+		return pkgerror.BadRequest(pkgerror.ErrVerifyEmailFailed, err)
 	}
 
 	user.VerifyEmail()
-
-	_, err = u.userRepo.Update(ctx, user, user.Code)
-	if err != nil {
-		return errors.ErrActivateUser
+	if _, err = u.userRepo.Update(ctx, user); err != nil {
+		return pkgerror.BadRequest(pkgerror.ErrVerifyEmailFailed, err)
 	}
 
 	return nil
@@ -417,147 +363,121 @@ func (u *UserUseCase) VerifyEmail(ctx context.Context, token string) error {
 func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendResetPasswordRequest) error {
 	user, err := u.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		return errors.ErrUserNotFound
+		return pkgerror.InternalServerError(pkgerror.ErrPrepareForgotPasswordEmail, err)
 	}
 
 	plainText := fmt.Sprintf("%s_%s", user.Email, time.Now().Add(1*time.Hour).Format(time.RFC3339))
-
 	token, err := u.aesService.EncryptURLSafe(plainText)
 	if err != nil {
-		return errors.ErrPrepareForgotPasswordEmail
+		return pkgerror.InternalServerError(pkgerror.ErrPrepareForgotPasswordEmail, err)
 	}
 
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.GetAppURL(), token)
-
-	message := model.ResetPasswordEvent{
-		UserEvent: model.UserEvent{
-			UserID: user.ID,
-			Name:   user.Name,
-		},
-		Email:    user.Email,
-		ResetURL: resetURL,
+	message := event.ResetPasswordEvent{
+		UserEvent: event.UserEvent{UserID: user.ID, Name: user.Name},
+		Email:     user.Email,
+		ResetURL:  resetURL,
 	}
 
 	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", user.ID.String(), messaging.UserResetPasswordEvent, message); err != nil {
-		log.Println("Failed to save outbox message for reset password event:", err)
+		logger.Error("failed to save outbox message for reset password event", zap.Error(err))
 	}
 
 	return nil
 }
 
 func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswordRequest) error {
-	token, err := u.aesService.DecryptURLSafe(req.Token)
+	decrypted, err := u.aesService.DecryptURLSafe(req.Token)
 	if err != nil {
-		return errors.ErrProcessToken
+		return pkgerror.BadRequest(pkgerror.ErrResetPasswordFailed, err)
 	}
 
-	var email string
-	var expiry string
-	payload := strings.Split(token, "_")
-
+	payload := strings.Split(decrypted, "_")
 	if len(payload) != 2 {
-		return errors.ErrTokenInvalid
+		return pkgerror.BadRequest(pkgerror.ErrResetPasswordFailed, pkgerror.ErrTokenInvalid)
 	}
 
-	email = payload[0]
-	expiry = payload[1]
-
-	expiryTime, err := time.Parse(time.RFC3339, expiry)
+	expiryTime, err := time.Parse(time.RFC3339, payload[1])
 	if err != nil {
-		return errors.ErrTokenInvalid
+		return pkgerror.BadRequest(pkgerror.ErrResetPasswordFailed, err)
 	}
 
 	if time.Now().After(expiryTime) {
-		return errors.ErrTokenExpired
+		return pkgerror.BadRequest(pkgerror.ErrResetPasswordFailed, pkgerror.ErrTokenExpired)
 	}
 
-	user, err := u.userRepo.FindByEmail(ctx, email)
+	user, err := u.userRepo.FindByEmail(ctx, payload[0])
 	if err != nil {
-		return errors.ErrUserNotFound
+		return pkgerror.BadRequest(pkgerror.ErrResetPasswordFailed, err)
 	}
 
 	hashedPassword, err := u.bcryptService.HashPassword(req.NewPassword)
 	if err != nil {
-		return errors.ErrProcessUserPassword
+		return pkgerror.BadRequest(pkgerror.ErrResetPasswordFailed, err)
 	}
 
 	user.SetPassword(hashedPassword)
-
-	_, err = u.userRepo.Update(ctx, user, user.Code)
-	if err != nil {
-		return errors.ErrUpdateUserPassword
+	if _, err = u.userRepo.Update(ctx, user); err != nil {
+		return pkgerror.BadRequest(pkgerror.ErrResetPasswordFailed, err)
 	}
 
 	return nil
 }
 
 func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, search string) (*model.PaginationResponse[model.UserInfo], error) {
-	// Create cache key
 	cacheKey := fmt.Sprintf("users:all:page:%d:size:%d:search:%s", page, pageSize, search)
 
 	var cachedResult model.PaginationResponse[model.UserInfo]
-	err := u.redisService.Get(ctx, cacheKey, &cachedResult)
-	if err == nil {
-		log.Printf("Cache HIT for key: %s", cacheKey)
+	if err := u.redisService.Get(ctx, cacheKey, &cachedResult); err == nil {
 		return &cachedResult, nil
+	} else if !errors.Is(err, pkgerror.ErrCacheMiss) {
+		logger.Error("cache error", zap.String("key", cacheKey), zap.Error(err))
 	}
 
-	if err != redis.Nil {
-		log.Printf("Cache error: %v", err)
-	} else {
-		log.Printf("Cache MISS for key: %s", cacheKey)
-	}
+	limit := pageSize
+	offset := (page - 1) * pageSize
 
-	users, total, err := u.userRepo.FindAll(ctx, page, pageSize, search)
+	users, total, err := u.userRepo.FindAll(ctx, limit, offset, search)
 	if err != nil {
-		return nil, errors.ErrGetAllUsers
+		return nil, pkgerror.InternalServerError(pkgerror.ErrGetAllUsers, err)
 	}
 
 	userInfos := make([]model.UserInfo, len(users))
 	for i, user := range users {
-		userInfos[i] = *formatUserInfo(user)
+		userInfos[i] = *model.FormatUserInfo(user)
 	}
 
 	result := model.NewPaginationResponse(userInfos, page, pageSize, int(total))
 
-	// Store in cache (5 minutes expiration)
 	if err := u.redisService.SetWithExpiration(ctx, cacheKey, result, 5*time.Minute); err != nil {
-		log.Printf("Failed to cache result: %v", err)
+		logger.Error("failed to cache result", zap.Error(err))
 	}
 
 	return result, nil
 }
 
-func (u *UserUseCase) GetUserByCode(ctx context.Context, code string) (*model.UserInfo, error) {
-	// Create cache key
-	cacheKey := fmt.Sprintf("user:code:%s", code)
+func (u *UserUseCase) GetUserByID(ctx context.Context, id string) (*model.UserInfo, error) {
+	cacheKey := fmt.Sprintf("user:id:%s", id)
 
 	var cachedUser model.UserInfo
-	err := u.redisService.Get(ctx, cacheKey, &cachedUser)
-	if err == nil {
-		log.Printf("Cache HIT for key: %s", cacheKey)
+	if err := u.redisService.Get(ctx, cacheKey, &cachedUser); err == nil {
 		return &cachedUser, nil
+	} else if !errors.Is(err, pkgerror.ErrCacheMiss) {
+		logger.Error("cache error", zap.String("key", cacheKey), zap.Error(err))
 	}
 
-	if err != redis.Nil {
-		log.Printf("Cache error: %v", err)
-	} else {
-		log.Printf("Cache MISS for key: %s", cacheKey)
-	}
-
-	user, err := u.userRepo.FindByCode(ctx, code)
+	user, err := u.userRepo.FindByID(ctx, id)
 	if err != nil || user == nil {
-		return nil, errors.ErrGetUserInformation
+		return nil, pkgerror.InternalServerError(pkgerror.ErrGetUserInformation, err)
 	}
 	if !user.IsActive || !user.IsVerified {
-		return nil, errors.ErrUserNotFound
+		return nil, pkgerror.NotFound(pkgerror.ErrUserNotFound, nil)
 	}
 
-	userInfo := formatUserInfo(user)
+	userInfo := model.FormatUserInfo(user)
 
-	// Store in cache (5 minutes expiration)
 	if err := u.redisService.SetWithExpiration(ctx, cacheKey, userInfo, 5*time.Minute); err != nil {
-		log.Printf("Failed to cache result: %v", err)
+		logger.Error("failed to cache result", zap.Error(err))
 	}
 
 	return userInfo, nil
@@ -565,36 +485,35 @@ func (u *UserUseCase) GetUserByCode(ctx context.Context, code string) (*model.Us
 
 func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserRequest) (*model.UserInfo, error) {
 	if u.userRepo.ExistByEmail(ctx, req.Email) {
-		return nil, errors.ErrEmailAlreadyExists
+		return nil, pkgerror.BadRequest(pkgerror.ErrCreateUser, pkgerror.ErrEmailAlreadyExists)
 	}
 
 	hashedPassword, err := u.bcryptService.HashPassword(req.Password)
 	if err != nil {
-		return nil, errors.ErrProcessUserPassword
+		return nil, pkgerror.BadRequest(pkgerror.ErrCreateUser, err)
 	}
 
 	userData, err := entity.NewUser(req.Name, req.Email, hashedPassword, "", entity.Other)
 	if err != nil {
-		return nil, errors.ErrInvalidInput
+		return nil, pkgerror.BadRequest(pkgerror.ErrCreateUser, err)
 	}
 
 	savedUser, err := u.userRepo.Create(ctx, userData)
 	if err != nil {
-		return nil, errors.ErrCreateUser
+		return nil, pkgerror.BadRequest(pkgerror.ErrCreateUser, err)
 	}
 
-	// Invalidate cache for all users list
-	if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
-		log.Printf("Failed to invalidate users cache: %v", err)
+	if err := u.redisService.DeletePattern(ctx, "users:all:*"); err != nil {
+		logger.Error("failed to invalidate users cache", zap.Error(err))
 	}
 
-	return formatUserInfo(savedUser), nil
+	return model.FormatUserInfo(savedUser), nil
 }
 
-func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.UpdateUserRequest) (*model.UserInfo, error) {
-	user, err := u.userRepo.FindByCode(ctx, code)
+func (u *UserUseCase) UpdateUser(ctx context.Context, id string, req *model.UpdateUserRequest) (*model.UserInfo, error) {
+	user, err := u.userRepo.FindByID(ctx, id)
 	if err != nil {
-		return nil, errors.ErrUserNotFound
+		return nil, pkgerror.BadRequest(pkgerror.ErrUpdateUser, err)
 	}
 
 	if req.Name != nil {
@@ -603,26 +522,19 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.Up
 
 	if req.Avatar != nil {
 		allowedExtensions := []string{".jpg", ".jpeg", ".png"}
-
 		if !utils.IsValidExtension(req.Avatar.Filename, allowedExtensions) {
-			return nil, errors.ErrUnsupportedImageType
+			return nil, pkgerror.BadRequest(pkgerror.ErrUpdateUser, pkgerror.ErrUnsupportedImageType)
 		}
 
-		// Choose one of the storage services to upload the avatar
-		// path, err := u.cloudinaryService.UploadFile(ctx, req.Avatar.Filename, req.Avatar.Size, *req.Avatar, "users/"+user.Code+"/avatar/")
-		// if err != nil || path == nil {
-		// 	return nil, errors.ErrUploadImage
-		// }
-
-		path, err := u.localStorageService.UploadFile(
+		path, err := u.storageService.UploadFile(
 			ctx,
 			fmt.Sprintf("avatar_%s_%d.jpg", user.ID.String(), time.Now().Unix()),
 			req.Avatar.Size,
 			*req.Avatar,
-			"users/"+user.Code+"/avatar/",
+			"users/"+user.ID.String()+"/avatar/",
 		)
 		if err != nil || path == nil {
-			return nil, errors.ErrUploadImage
+			return nil, pkgerror.BadRequest(pkgerror.ErrUpdateUser, err)
 		}
 
 		user.Avatar = *path
@@ -632,95 +544,87 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, code string, req *model.Up
 		user.Gender = *req.Gender
 	}
 
-	updatedUser, err := u.userRepo.Update(ctx, user, user.Code)
+	updatedUser, err := u.userRepo.Update(ctx, user)
 	if err != nil {
-		return nil, errors.ErrUpdateUser
+		return nil, pkgerror.BadRequest(pkgerror.ErrUpdateUser, err)
 	}
 
-	// Invalidate cache for this user and all users list
-	cacheKey := fmt.Sprintf("user:code:%s", code)
-	if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
-		log.Printf("Failed to invalidate user cache: %v", err)
+	cacheKey := fmt.Sprintf("user:id:%s", id)
+	if err := u.redisService.Delete(ctx, cacheKey); err != nil {
+		logger.Error("failed to invalidate user cache", zap.Error(err))
 	}
-	if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
-		log.Printf("Failed to invalidate users cache: %v", err)
+	if err := u.redisService.DeletePattern(ctx, "users:all:*"); err != nil {
+		logger.Error("failed to invalidate users cache", zap.Error(err))
 	}
 
-	return formatUserInfo(updatedUser), nil
+	return model.FormatUserInfo(updatedUser), nil
 }
 
 func (u *UserUseCase) ChangePassword(ctx context.Context, userID string, req *model.ChangePasswordRequest) error {
 	user, err := u.userRepo.FindByID(ctx, userID)
 	if err != nil {
-		return errors.ErrUserNotFound
+		return pkgerror.BadRequest(pkgerror.ErrUpdateUserPassword, err)
 	}
 
 	if err := u.bcryptService.ValidatePassword(req.OldPassword, user.Password); err != nil {
-		return errors.ErrPasswordNotMatch
+		return pkgerror.BadRequest(pkgerror.ErrUpdateUserPassword, pkgerror.ErrPasswordNotMatch)
 	}
 
 	hashedPassword, err := u.bcryptService.HashPassword(req.NewPassword)
 	if err != nil {
-		return errors.ErrProcessUserPassword
+		return pkgerror.BadRequest(pkgerror.ErrUpdateUserPassword, err)
 	}
 
 	user.SetPassword(hashedPassword)
-
-	_, err = u.userRepo.Update(ctx, user, user.Code)
-	if err != nil {
-		return errors.ErrUpdateUserPassword
-	}
-	return nil
-}
-
-func (u *UserUseCase) ChangeStatus(ctx context.Context, code string, req model.ChangeUserStatusRequest) error {
-	user, err := u.userRepo.FindByCode(ctx, code)
-	if err != nil {
-		return errors.ErrUserNotFound
-	}
-
-	user.IsActive = req.IsActive
-
-	_, err = u.userRepo.Update(ctx, user, user.Code)
-	if err != nil {
-		return errors.ErrUpdateUserStatus
-	}
-
-	// Invalidate cache for this user and all users list
-	cacheKey := fmt.Sprintf("user:code:%s", code)
-	if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
-		log.Printf("Failed to invalidate user cache: %v", err)
-	}
-	if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
-		log.Printf("Failed to invalidate users cache: %v", err)
+	if _, err = u.userRepo.Update(ctx, user); err != nil {
+		return pkgerror.BadRequest(pkgerror.ErrUpdateUserPassword, err)
 	}
 
 	return nil
 }
 
-func (u *UserUseCase) DeleteUser(ctx context.Context, code string) error {
-	user, err := u.userRepo.FindByCode(ctx, code)
+func (u *UserUseCase) ChangeStatus(ctx context.Context, id string, req model.ChangeUserStatusRequest) error {
+	user, err := u.userRepo.FindByID(ctx, id)
 	if err != nil {
-		return errors.ErrUserNotFound
+		return pkgerror.InternalServerError(pkgerror.ErrUpdateUserStatus, err)
 	}
 
-	err = u.refreshTokenRepo.RevokeAllByUserID(ctx, user.ID.String())
-	if err != nil {
-		return errors.ErrTerminateAllSessions
+	user.IsActive = *req.IsActive
+	if _, err = u.userRepo.Update(ctx, user); err != nil {
+		return pkgerror.InternalServerError(pkgerror.ErrUpdateUserStatus, err)
 	}
 
-	err = u.userRepo.Delete(ctx, user.Code)
-	if err != nil {
-		return errors.ErrDeleteUser
+	cacheKey := fmt.Sprintf("user:id:%s", id)
+	if err := u.redisService.Delete(ctx, cacheKey); err != nil {
+		logger.Error("failed to invalidate user cache", zap.Error(err))
+	}
+	if err := u.redisService.DeletePattern(ctx, "users:all:*"); err != nil {
+		logger.Error("failed to invalidate users cache", zap.Error(err))
 	}
 
-	// Invalidate cache for this user and all users list
-	cacheKey := fmt.Sprintf("user:code:%s", code)
-	if err := u.redisService.Delete(context.Background(), cacheKey); err != nil {
-		log.Printf("Failed to invalidate user cache: %v", err)
+	return nil
+}
+
+func (u *UserUseCase) DeleteUser(ctx context.Context, id string) error {
+	user, err := u.userRepo.FindByID(ctx, id)
+	if err != nil {
+		return pkgerror.InternalServerError(pkgerror.ErrDeleteUser, err)
 	}
-	if err := u.redisService.DeletePattern(context.Background(), "users:all:*"); err != nil {
-		log.Printf("Failed to invalidate users cache: %v", err)
+
+	if err = u.refreshTokenRepo.RevokeAllByUserID(ctx, user.ID.String()); err != nil {
+		return pkgerror.InternalServerError(pkgerror.ErrDeleteUser, err)
+	}
+
+	if err = u.userRepo.Delete(ctx, user.ID.String()); err != nil {
+		return pkgerror.InternalServerError(pkgerror.ErrDeleteUser, err)
+	}
+
+	cacheKey := fmt.Sprintf("user:id:%s", id)
+	if err := u.redisService.Delete(ctx, cacheKey); err != nil {
+		logger.Error("failed to invalidate user cache", zap.Error(err))
+	}
+	if err := u.redisService.DeletePattern(ctx, "users:all:*"); err != nil {
+		logger.Error("failed to invalidate users cache", zap.Error(err))
 	}
 
 	return nil

@@ -1,4 +1,4 @@
-package model
+package event
 
 import "github.com/google/uuid"
 

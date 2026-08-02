@@ -1,7 +1,7 @@
--- Create users table
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 CREATE TABLE users (
-    pkid BIGSERIAL PRIMARY KEY,
-    code VARCHAR(11) UNIQUE NOT NULL,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     password VARCHAR(255),
@@ -18,8 +18,6 @@ CREATE TABLE users (
     is_deleted BOOLEAN DEFAULT FALSE
 );
 
--- Create indexes for better query performance
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_code ON users(code);
 CREATE INDEX idx_users_oauth ON users(oauth_provider, oauth_id);
 CREATE INDEX idx_users_is_deleted ON users(is_deleted);

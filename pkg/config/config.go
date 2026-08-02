@@ -17,9 +17,12 @@ type Config struct {
 	RabbitMQ   RabbitMQConfig
 	Cloudinary CloudinaryConfig
 	Redis      RedisConfig
+	MinIO      MinIOConfig
+	Email      EmailConfig
 }
 
 type ServerConfig struct {
+	AppName     string
 	Host        string
 	Port        int
 	Environment string
@@ -63,11 +66,12 @@ type AESConfig struct {
 }
 
 type RabbitMQConfig struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	Exchange string
+	Host          string
+	Port          int
+	Username      string
+	Password      string
+	Exchange      string
+	QueueBaseName string
 }
 
 type CloudinaryConfig struct {
@@ -82,6 +86,23 @@ type RedisConfig struct {
 	Expiration int
 }
 
+type MinIOConfig struct {
+	Endpoint        string
+	AccessKeyID     string
+	SecretAccessKey string
+	BucketName      string
+	UseSSL          bool
+	Region          string
+}
+
+type EmailConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+}
+
 func Load() (*Config, error) {
 	defaultAppID := getEnv("DEFAULT_APP_ID", "default")
 
@@ -94,6 +115,7 @@ func Load() (*Config, error) {
 
 	return &Config{
 		Server: ServerConfig{
+			AppName:     getEnv("APP_NAME", "Go Gin Clean Template"),
 			Host:        getEnv("SERVER_HOST", "localhost"),
 			Port:        getEnvAsInt("SERVER_PORT", 3000),
 			Environment: getEnv("ENVIRONMENT", "development"),
@@ -132,11 +154,12 @@ func Load() (*Config, error) {
 			IV:  getEnv("AES_IV", "your-aes-initialization-vector"),
 		},
 		RabbitMQ: RabbitMQConfig{
-			Host:     getEnv("RABBITMQ_HOST", "localhost"),
-			Port:     getEnvAsInt("RABBITMQ_PORT", 5672),
-			Username: getEnv("RABBITMQ_USER", "guest"),
-			Password: getEnv("RABBITMQ_PASSWORD", "guest"),
-			Exchange: getEnv("RABBITMQ_EXCHANGE", "main_event_bus"),
+			Host:          getEnv("RABBITMQ_HOST", "localhost"),
+			Port:          getEnvAsInt("RABBITMQ_PORT", 5672),
+			Username:      getEnv("RABBITMQ_USER", "guest"),
+			Password:      getEnv("RABBITMQ_PASSWORD", "guest"),
+			Exchange:      getEnv("RABBITMQ_EXCHANGE", "main_event_bus"),
+			QueueBaseName: getEnv("RABBITMQ_QUEUE_BASE_NAME", "main-service"),
 		},
 		Cloudinary: CloudinaryConfig{
 			CloudinaryURL: getEnv("CLOUDINARY_URL", "cloudinary://API_KEY:API_SECRET@CLOUD_NAME"),
@@ -146,6 +169,21 @@ func Load() (*Config, error) {
 			Port:     getEnvAsInt("REDIS_PORT", 6379),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
+		},
+		MinIO: MinIOConfig{
+			Endpoint:        getEnv("MINIO_ENDPOINT", "localhost:9000"),
+			AccessKeyID:     getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+			SecretAccessKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
+			BucketName:      getEnv("MINIO_BUCKET_NAME", "my-bucket"),
+			UseSSL:          getEnvAsInt("MINIO_USE_SSL", 0) == 1,
+			Region:          getEnv("MINIO_REGION", "us-east-1"),
+		},
+		Email: EmailConfig{
+			Host:     getEnv("EMAIL_HOST", "smtp.example.com"),
+			Port:     getEnvAsInt("EMAIL_PORT", 587),
+			Username: getEnv("EMAIL_USERNAME", ""),
+			Password: getEnv("EMAIL_PASSWORD", ""),
+			From:     getEnv("EMAIL_FROM", ""),
 		},
 	}, nil
 }

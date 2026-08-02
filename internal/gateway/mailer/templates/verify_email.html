@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Email Verification</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: #fff;
+        margin: 0;
+        padding: 20px;
+        color: #333;
+      }
+      .container {
+        background: #fff;
+        max-width: 480px;
+        margin: 40px auto;
+        padding: 32px 64px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+        text-align: left;
+      }
+      .logo {
+        display: block;
+        margin: 0 auto 24px auto;
+        max-width: 150px;
+      }
+      .illustration {
+        text-align: center;
+        margin-bottom: 24px;
+      }
+      .illustration img {
+        max-width: 100%;
+        height: auto;
+      }
+      h2 {
+        color: #1a1a1a;
+        margin-bottom: 16px;
+      }
+      .btn {
+        display: block;
+        width: 100%;
+        padding: 16px 32px;
+        background: #cff24d;
+        color: #000;
+        text-align: center;
+        text-decoration: none;
+        font-weight: bold;
+        font-size: 1.1em;
+        margin: 24px 0;
+        box-sizing: border-box;
+      }
+      .btn-wrapper {
+        text-align: center;
+      }
+      .footer {
+        margin-top: 32px;
+        font-size: 0.85em;
+        color: #888;
+        text-align: center;
+      }
+      .credit {
+        margin-top: 10px;
+        font-size: 0.75em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <img
+        src="https://res.cloudinary.com/dkuzp4xr0/image/upload/v1772471131/email-logo_vh5krf.png"
+        alt="Palm Count Logo"
+        class="logo"
+      />
+
+      <div class="illustration">
+        <img
+          src="https://res.cloudinary.com/dkuzp4xr0/image/upload/v1772470795/Login-bro_m7wmzs.png"
+          alt="Verify Email Illustration"
+        />
+      </div>
+
+      <h2>Verify Your Email Address</h2>
+      <p>Hello, <strong>{{.Name}}</strong>.</p>
+      <p>
+        I would like to say thank you for giving us the opportunity to be a part
+        of your journey. We are thrilled to have you on board!
+      </p>
+      <p>
+        To ensure the security of your account and to finalize your
+        registration, please take a moment to verify your email address by
+        clicking the button below:
+      </p>
+
+      <div class="btn-wrapper">
+        <a class="btn" href="{{.VerificationURL}}">Verify Email</a>
+      </div>
+
+      <div class="footer">
+        &copy; 2026 Palm Count, All rights reserved.
+        <div class="credit">
+          <a href="https://storyset.com/online"
+            >Online illustrations by Storyset</a
+          >
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

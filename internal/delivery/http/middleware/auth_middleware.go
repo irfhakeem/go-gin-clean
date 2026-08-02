@@ -1,20 +1,20 @@
 package middleware
 
 import (
-	"go-gin-clean/internal/delivery/http/response"
-	"go-gin-clean/internal/gateway/security"
-	"go-gin-clean/pkg/errors"
-	"net/http"
 	"strings"
+
+	"go-gin-clean/internal/gateway/security"
+	pkgerror "go-gin-clean/pkg/error"
+	"go-gin-clean/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
 
 type AuthMiddleware struct {
-	jwtService *security.JWTService
+	jwtService security.JWTServiceInterface
 }
 
-func NewAuthMiddleware(jwtService *security.JWTService) *AuthMiddleware {
+func NewAuthMiddleware(jwtService security.JWTServiceInterface) *AuthMiddleware {
 	return &AuthMiddleware{
 		jwtService: jwtService,
 	}
@@ -24,33 +24,32 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			response.Error(c, "authentication required", errors.ErrAuthHeaderMissing.Error(), http.StatusUnauthorized)
+			response.Error(c, pkgerror.Unauthorized(pkgerror.ErrAuthHeaderMissing, nil))
 			c.Abort()
 			return
 		}
 
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			response.Error(c, "invalid token format", errors.ErrAuthHeaderMissing.Error(), http.StatusUnauthorized)
+			response.Error(c, pkgerror.Unauthorized(pkgerror.ErrAuthHeaderMissing, nil))
 			c.Abort()
 			return
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if token == "" {
-			response.Error(c, "token not found", errors.ErrTokenNotFound.Error(), http.StatusUnauthorized)
+			response.Error(c, pkgerror.Unauthorized(pkgerror.ErrTokenNotFound, nil))
 			c.Abort()
 			return
 		}
 
 		claims, err := m.jwtService.ValidateAccessToken(token)
 		if err != nil {
-			response.Error(c, "invalid token", errors.ErrTokenInvalid.Error(), http.StatusUnauthorized)
+			response.Error(c, pkgerror.Unauthorized(pkgerror.ErrTokenInvalid, err))
 			c.Abort()
 			return
 		}
 
 		c.Set("user_id", claims.UserID.String())
-		c.Set("user_code", claims.UserCode)
 		c.Set("user_role", claims.UserRole)
 
 		c.Next()

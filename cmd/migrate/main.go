@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 
-	"go-gin-clean/internal/entity"
 	"go-gin-clean/pkg/config"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -20,34 +19,16 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-var (
-	models = []any{
-		&entity.User{},
-		&entity.RefreshToken{},
-	}
-
-	enums = map[string][]string{
-		"gender":      {"Male", "Female", "Other"},
-		"join_status": {"Pending", "Accepted", "Rejected"},
-		"role":        {"Admin", "User"},
-	}
-)
-
 func main() {
-	// Load environment variables
-	if err := godotenv.Load(".env"); err != nil {
-		log.Println("Warning: .env file not found")
-	}
+	_ = godotenv.Load(".env")
 
-	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Error loading configuration: %v", err)
 	}
 
-	// Check command line arguments
 	if len(os.Args) < 2 {
-		log.Fatal("Usage: migrate [up|down|force|version|create|migrate|rollback|fresh]")
+		log.Fatal("Usage: migrate [up|down|force|version|create]")
 	}
 
 	command := os.Args[1]
@@ -73,27 +54,8 @@ func main() {
 			log.Fatal("Usage: migrate create <migration_name>")
 		}
 		createMigration(os.Args[2])
-	case "migrate":
-		// Legacy GORM migration
-		db, err := setupDatabase(&cfg.Database)
-		if err != nil {
-			log.Fatalf("Error connecting to database: %v", err)
-		}
-		runMigrations(db)
-	case "rollback":
-		db, err := setupDatabase(&cfg.Database)
-		if err != nil {
-			log.Fatalf("Error connecting to database: %v", err)
-		}
-		runRollback(db)
-	case "fresh":
-		db, err := setupDatabase(&cfg.Database)
-		if err != nil {
-			log.Fatalf("Error connecting to database: %v", err)
-		}
-		runFreshMigrations(db)
 	default:
-		log.Fatal("Unknown command. Available commands: up, down, force, version, create, migrate, rollback, fresh")
+		log.Fatal("Unknown command. Available commands: up, down, force, version, create")
 	}
 }
 
@@ -111,67 +73,7 @@ func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-func runMigrations(db *gorm.DB) {
-	log.Println("Running database migrations...")
-
-	for name, values := range enums {
-		quotedValues := make([]string, len(values))
-		for i, value := range values {
-			quotedValues[i] = "'" + value + "'"
-		}
-		sql := "DO $$ BEGIN " +
-			"IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '" + name + "') THEN " +
-			"CREATE TYPE " + name + " AS ENUM (" + quotedValues[0]
-		for _, v := range quotedValues[1:] {
-			sql += ", " + v
-		}
-		sql += "); END IF; END $$;"
-
-		if err := db.Exec(sql).Error; err != nil {
-			log.Printf("Error creating enum %s: %v", name, err)
-		}
-	}
-
-	// Run auto migrations
-	err := db.AutoMigrate(
-		models...,
-	)
-
-	if err != nil {
-		log.Fatalf("Migration failed: %v", err)
-	}
-
-	log.Println("Database migrations completed successfully")
-}
-
-func runRollback(db *gorm.DB) {
-	log.Println("Running database rollback...")
-
-	for _, model := range models {
-		if err := db.Migrator().DropTable(model); err != nil {
-			log.Printf("Error dropping table %T: %v", model, err)
-		}
-	}
-
-	for name := range enums {
-		if err := db.Exec("DROP TYPE IF EXISTS " + name).Error; err != nil {
-			log.Printf("Error dropping enum %s: %v", name, err)
-		}
-	}
-
-	log.Println("Database rollback completed successfully")
-}
-
-func runFreshMigrations(db *gorm.DB) {
-	log.Println("Running fresh migrations...")
-	runRollback(db)
-	runMigrations(db)
-}
-
-// Golang-migrate functions for production
-
 func getMigrate(cfg *config.Config) (*migrate.Migrate, error) {
-	// Create database connection string for lib/pq
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
 		cfg.Database.User,
 		cfg.Database.Password,
@@ -180,19 +82,16 @@ func getMigrate(cfg *config.Config) (*migrate.Migrate, error) {
 		cfg.Database.DBName,
 	)
 
-	// Open database connection
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Create driver instance
 	driver, err := migratepg.WithInstance(db, &migratepg.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create driver: %w", err)
 	}
 
-	// Create migrate instance
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://migrations",
 		"postgres",
@@ -295,7 +194,6 @@ func createMigration(name string) {
 		log.Fatal("Migration name cannot be empty")
 	}
 
-	// Get the next migration number
 	files, err := os.ReadDir("migrations")
 	if err != nil {
 		log.Fatalf("Error reading migrations directory: %v", err)
@@ -304,7 +202,6 @@ func createMigration(name string) {
 	nextNum := 1
 	for _, file := range files {
 		if !file.IsDir() {
-			// Migration files are named like: 000001_name.up.sql
 			filename := file.Name()
 			if len(filename) >= 6 {
 				if num, err := strconv.Atoi(filename[:6]); err == nil {
@@ -326,7 +223,6 @@ func createMigration(name string) {
 		log.Fatalf("Error creating up migration file: %v", err)
 	}
 
-	// Create down migration file
 	downContent := fmt.Sprintf("-- Migration: %s\n-- Created at: %s\n\n-- Add your DOWN migration SQL here\n", name, os.Args[0])
 	if err := os.WriteFile(downFile, []byte(downContent), 0644); err != nil {
 		log.Fatalf("Error creating down migration file: %v", err)

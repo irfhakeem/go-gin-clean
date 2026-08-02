@@ -3,9 +3,9 @@ package model
 import "math"
 
 type PaginationRequest struct {
-	Page    int    `form:"page" json:"page"`
-	PerPage int    `form:"per_page" json:"per_page"`
-	Search  string `form:"search,omitempty" json:"search,omitempty"`
+	Page    int    `form:"page"     binding:"omitempty,min=1"`
+	PerPage int    `form:"per_page" binding:"omitempty,min=1,max=100"`
+	Search  string `form:"search"   binding:"omitempty,max=100"`
 }
 
 type PaginationResponse[T any] struct {

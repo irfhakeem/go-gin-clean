@@ -1,15 +1,24 @@
 package security
 
 import (
+	"time"
+
 	"go-gin-clean/internal/entity"
 	"go-gin-clean/internal/model"
 	"go-gin-clean/pkg/config"
-	"go-gin-clean/pkg/errors"
-	"time"
+
+	pkgerror "go-gin-clean/pkg/error"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 )
+
+type JWTServiceInterface interface {
+	GenerateAccessToken(user *entity.User) (string, time.Time, error)
+	GenerateRefreshToken(userID string) (string, time.Time, error)
+	ValidateAccessToken(tokenString string) (*model.AccessTokenClaims, error)
+	ValidateRefreshToken(tokenString string) (*model.RefreshTokenClaims, error)
+}
 
 type JWTService struct {
 	cfg *config.JWTConfig
@@ -19,7 +28,6 @@ func NewJWTService(cfg *config.JWTConfig) *JWTService {
 	return &JWTService{cfg: cfg}
 }
 
-// ParseUUID parses a string to UUID
 func ParseUUID(s string) (uuid.UUID, error) {
 	return uuid.Parse(s)
 }
@@ -30,7 +38,6 @@ func (j *JWTService) GenerateAccessToken(user *entity.User) (string, time.Time, 
 
 	claims := jwt.MapClaims{
 		"user_id":    user.ID.String(),
-		"user_code":  user.Code,
 		"user_role":  user.Role,
 		"token_type": "access",
 		"exp":        expiryAt.Unix(),
@@ -75,77 +82,67 @@ func (j *JWTService) GenerateRefreshToken(userID string) (string, time.Time, err
 func (j *JWTService) ValidateAccessToken(tokenString string) (*model.AccessTokenClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.ErrUnexpectedSigningMethod
+			return nil, pkgerror.ErrUnexpectedSigningMethod
 		}
 		return []byte(j.cfg.AccessTokenSecret), nil
 	})
 
-	if err != nil {
-		return nil, errors.ErrTokenInvalid
-	}
-
-	if !token.Valid {
-		return nil, errors.ErrTokenInvalid
+	if err != nil || !token.Valid {
+		return nil, pkgerror.ErrTokenInvalid
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	tokenType, ok := claims["token_type"].(string)
 	if !ok || tokenType != "access" {
-		return nil, errors.ErrTokenInvalid
+		return nil, pkgerror.ErrTokenInvalid
 	}
 
 	userID, ok := claims["user_id"].(string)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
-	}
-
-	userCode, ok := claims["user_code"].(string)
-	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	userRole, ok := claims["user_role"].(string)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	exp, ok := claims["exp"].(float64)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	iat, ok := claims["iat"].(float64)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	nbf, ok := claims["nbf"].(float64)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	iss, ok := claims["iss"].(string)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	sub, ok := claims["sub"].(string)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
-	uuid, err := ParseUUID(userID)
+	parsedUUID, err := ParseUUID(userID)
 	if err != nil {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	return &model.AccessTokenClaims{
-		UserID:    uuid,
-		UserCode:  userCode,
+		UserID:    parsedUUID,
 		UserRole:  userRole,
 		TokenType: tokenType,
 		ExpiresAt: time.Unix(int64(exp), 0),
@@ -159,66 +156,62 @@ func (j *JWTService) ValidateAccessToken(tokenString string) (*model.AccessToken
 func (j *JWTService) ValidateRefreshToken(tokenString string) (*model.RefreshTokenClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.ErrUnexpectedSigningMethod
+			return nil, pkgerror.ErrUnexpectedSigningMethod
 		}
 		return []byte(j.cfg.RefreshTokenSecret), nil
 	})
 
-	if err != nil {
-		return nil, errors.ErrTokenInvalid
-	}
-
-	if !token.Valid {
-		return nil, errors.ErrTokenInvalid
+	if err != nil || !token.Valid {
+		return nil, pkgerror.ErrTokenInvalid
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	tokenType, ok := claims["token_type"].(string)
 	if !ok || tokenType != "refresh" {
-		return nil, errors.ErrTokenInvalid
+		return nil, pkgerror.ErrTokenInvalid
 	}
 
 	userID, ok := claims["user_id"].(string)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	exp, ok := claims["exp"].(float64)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	iat, ok := claims["iat"].(float64)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	nbf, ok := claims["nbf"].(float64)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	iss, ok := claims["iss"].(string)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	sub, ok := claims["sub"].(string)
 	if !ok {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
-	uuid, err := ParseUUID(userID)
+	parsedUUID, err := ParseUUID(userID)
 	if err != nil {
-		return nil, errors.ErrInvalidClaims
+		return nil, pkgerror.ErrInvalidClaims
 	}
 
 	return &model.RefreshTokenClaims{
-		UserID:    uuid,
+		UserID:    parsedUUID,
 		TokenType: tokenType,
 		ExpiresAt: time.Unix(int64(exp), 0),
 		IssuedAt:  time.Unix(int64(iat), 0),

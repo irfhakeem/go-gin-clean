@@ -12,18 +12,14 @@ func SetupRoutes(
 	router *gin.Engine,
 	userHandler *http.UserHandler,
 	oauthHandler *http.OAuthHandler,
-	jwtService *security.JWTService,
+	jwtService security.JWTServiceInterface,
 ) {
-	// Setup handlers
 	authMiddleware := middleware.NewAuthMiddleware(jwtService)
 
-	// Setup CORS
 	router.Use(middleware.CORS())
 
-	// API routes
 	api := router.Group("/api/v1")
 	{
-		// Public routes (auth)
 		auth := api.Group("/auth")
 		{
 			auth.POST("/login", userHandler.Login)
@@ -54,15 +50,14 @@ func SetupRoutes(
 		users.Use(authMiddleware.RequireAuth())
 		{
 			users.GET("", userHandler.GetAllUsers)
-			users.GET("/:code", userHandler.GetUserByCode)
+			users.GET("/:id", userHandler.GetUserByID)
 			users.POST("", userHandler.CreateUser)
-			users.PUT("/:code", userHandler.UpdateUser)
-			users.PUT("/:code/change-status", userHandler.ChangeStatus)
-			users.DELETE("/:code", userHandler.DeleteUser)
+			users.PUT("/:id", userHandler.UpdateUser)
+			users.PUT("/:id/change-status", userHandler.ChangeStatus)
+			users.DELETE("/:id", userHandler.DeleteUser)
 		}
 	}
 
-	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "healthy",

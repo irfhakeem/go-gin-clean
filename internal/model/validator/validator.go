@@ -3,9 +3,11 @@ package validator
 import (
 	stdErrors "errors"
 	"fmt"
-	"go-gin-clean/pkg/errors"
+	"reflect"
 	"strings"
-	"unicode"
+
+	pkgerror "go-gin-clean/pkg/error"
+	"go-gin-clean/pkg/response/message"
 
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
@@ -17,7 +19,16 @@ func RegisterCustomValidations() error {
 		return fmt.Errorf("failed to initialize validator engine")
 	}
 
-	// Register custom validations func here:
+	engine.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		if name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]; name != "" && name != "-" {
+			return name
+		}
+		if name := strings.SplitN(fld.Tag.Get("form"), ",", 2)[0]; name != "" && name != "-" {
+			return name
+		}
+		return fld.Name
+	})
+
 	if err := engine.RegisterValidation("gender", validateGender); err != nil {
 		return err
 	}
@@ -29,51 +40,74 @@ func RegisterCustomValidations() error {
 	return nil
 }
 
-func BuildValidationMessage(err error) string {
-	var validationErrors validator.ValidationErrors
-	if !stdErrors.As(err, &validationErrors) {
-		return err.Error()
+func BuildValidationErrors(err error) (map[string]string, bool) {
+	var ve validator.ValidationErrors
+	if !stdErrors.As(err, &ve) {
+		return nil, false
 	}
 
-	messages := make([]string, 0, len(validationErrors))
-	for _, fieldError := range validationErrors {
-		messages = append(messages, formatFieldErrorMessage(fieldError))
+	errs := make(map[string]string, len(ve))
+	for _, fe := range ve {
+		errs[fe.Field()] = buildFieldErrorMessage(fe)
 	}
 
-	return strings.Join(messages, "; ")
+	return errs, true
 }
 
-func formatFieldErrorMessage(fieldError validator.FieldError) string {
-	fieldName := toFriendlyFieldName(fieldError.Field())
+func buildFieldErrorMessage(fe validator.FieldError) string {
+	fieldName := toFriendlyName(fe.Field())
 
-	switch fieldError.Tag() {
+	switch fe.Tag() {
 	case "required":
 		return fmt.Sprintf("%s is required", fieldName)
-	case "min":
-		return fmt.Sprintf("%s must be at least %s characters long", fieldName, fieldError.Param())
 	case "email":
-		return errors.ErrInvalidEmail.Error()
+		return "must be a valid email address"
+	case "min":
+		switch fe.Kind() {
+		case reflect.String, reflect.Slice, reflect.Array, reflect.Map:
+			return fmt.Sprintf("%s must be at least %s characters", fieldName, fe.Param())
+		default:
+			return fmt.Sprintf("%s must be at least %s", fieldName, fe.Param())
+		}
+	case "max":
+		switch fe.Kind() {
+		case reflect.String, reflect.Slice, reflect.Array, reflect.Map:
+			return fmt.Sprintf("%s must not exceed %s characters", fieldName, fe.Param())
+		default:
+			return fmt.Sprintf("%s must not exceed %s", fieldName, fe.Param())
+		}
+	case "len":
+		return fmt.Sprintf("%s must be exactly %s characters", fieldName, fe.Param())
+	case "oneof":
+		opts := strings.ReplaceAll(fe.Param(), " ", ", ")
+		return fmt.Sprintf("%s must be one of: %s", fieldName, opts)
+	case "gte":
+		return fmt.Sprintf("%s must be %s or greater", fieldName, fe.Param())
+	case "lte":
+		return fmt.Sprintf("%s must be %s or less", fieldName, fe.Param())
+	case "gt":
+		return fmt.Sprintf("%s must be greater than %s", fieldName, fe.Param())
+	case "lt":
+		return fmt.Sprintf("%s must be less than %s", fieldName, fe.Param())
+	case "url":
+		return fmt.Sprintf("%s must be a valid URL", fieldName)
+	case "uuid":
+		return fmt.Sprintf("%s must be a valid UUID", fieldName)
+	case "numeric":
+		return fmt.Sprintf("%s must contain only numbers", fieldName)
+	case "alpha":
+		return fmt.Sprintf("%s must contain only letters", fieldName)
+	case "alphanum":
+		return fmt.Sprintf("%s must contain only letters and numbers", fieldName)
 	case "password":
-		return errors.ErrPasswordNotMeetsCriteria.Error()
+		return message.Get(message.EN, pkgerror.ErrPasswordNotMeetsCriteria)
 	case "gender":
-		return errors.ErrInvalidGender.Error()
+		return message.Get(message.EN, pkgerror.ErrInvalidGender)
 	default:
 		return fmt.Sprintf("%s is invalid", fieldName)
 	}
 }
 
-func toFriendlyFieldName(field string) string {
-	if field == "" {
-		return "field"
-	}
-
-	var builder strings.Builder
-	for i, r := range field {
-		if i > 0 && unicode.IsUpper(r) {
-			builder.WriteRune(' ')
-		}
-		builder.WriteRune(unicode.ToLower(r))
-	}
-
-	return builder.String()
+func toFriendlyName(field string) string {
+	return strings.ReplaceAll(field, "_", " ")
 }

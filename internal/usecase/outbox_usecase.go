@@ -3,12 +3,14 @@ package usecase
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"time"
 
 	"go-gin-clean/internal/entity"
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/repository"
+	"go-gin-clean/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 type OutboxUseCaseInterface interface {
@@ -19,15 +21,15 @@ type OutboxUseCaseInterface interface {
 
 type OutboxUseCase struct {
 	outboxRepo repository.OutboxRepositoryInterface
-	publisher  messaging.PublisherInterface
+	publisher  messaging.PublisherServiceInterface
 	exchange   string
 }
 
 func NewOutboxUseCase(
 	outboxRepo repository.OutboxRepositoryInterface,
-	publisher messaging.PublisherInterface,
+	publisher messaging.PublisherServiceInterface,
 	exchange string,
-) *OutboxUseCase {
+) OutboxUseCaseInterface {
 	return &OutboxUseCase{
 		outboxRepo: outboxRepo,
 		publisher:  publisher,
@@ -43,13 +45,23 @@ func (u *OutboxUseCase) ProcessBatch(ctx context.Context, limit int) error {
 
 	for _, msg := range messages {
 		if pubErr := u.publisher.Publish(msg.EventType, msg.Payload); pubErr != nil {
-			log.Printf("[OutboxUseCase] publish failed pkid=%d event=%s: %v", msg.PKID, msg.EventType, pubErr)
+			logger.Error("outbox publish failed",
+				zap.Int64("pkid", msg.PKID),
+				zap.String("event", msg.EventType),
+				zap.Error(pubErr),
+			)
 			if retryErr := u.outboxRepo.RetryOrFail(ctx, msg.PKID, pubErr.Error()); retryErr != nil {
-				log.Printf("[OutboxUseCase] RetryOrFail error pkid=%d: %v", msg.PKID, retryErr)
+				logger.Error("outbox retry failed",
+					zap.Int64("pkid", msg.PKID),
+					zap.Error(retryErr),
+				)
 			}
 		} else {
 			if markErr := u.outboxRepo.MarkPublished(ctx, msg.PKID); markErr != nil {
-				log.Printf("[OutboxUseCase] MarkPublished error pkid=%d: %v", msg.PKID, markErr)
+				logger.Error("outbox mark published failed",
+					zap.Int64("pkid", msg.PKID),
+					zap.Error(markErr),
+				)
 			}
 		}
 	}

@@ -1,11 +1,19 @@
 package validator
 
 import (
-	"go-gin-clean/internal/entity"
 	"reflect"
 	"regexp"
 
+	"go-gin-clean/internal/entity"
+
 	"github.com/go-playground/validator/v10"
+)
+
+var (
+	reUpper  = regexp.MustCompile(`[A-Z]`)
+	reLower  = regexp.MustCompile(`[a-z]`)
+	reNumber = regexp.MustCompile(`[0-9]`)
+	reSymbol = regexp.MustCompile(`[!@#~$%^&*()\-_+|<>{}[\]\/?]`)
 )
 
 func validateGender(fl validator.FieldLevel) bool {
@@ -22,21 +30,14 @@ func validateGender(fl validator.FieldLevel) bool {
 		return false
 	}
 
-	gender := value.Interface().(entity.Gender)
-	return gender.IsValid()
+	return value.Interface().(entity.Gender).IsValid()
 }
 
 func validatePassword(fl validator.FieldLevel) bool {
 	password := fl.Field().String()
-
-	if len(password) < 8 {
-		return false
-	}
-
-	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
-	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
-	hasNumber := regexp.MustCompile(`[0-9]`).MatchString(password)
-	hasSymbol := regexp.MustCompile(`[!@#~$%^&*()_+|<>{}[\]\/?]`).MatchString(password)
-
-	return hasUpper && hasLower && hasNumber && hasSymbol
+	return len(password) >= 8 &&
+		reUpper.MatchString(password) &&
+		reLower.MatchString(password) &&
+		reNumber.MatchString(password) &&
+		reSymbol.MatchString(password)
 }

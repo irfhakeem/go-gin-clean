@@ -1,6 +1,5 @@
 package model
 
-// User data structures
 type GoogleUserData struct {
 	ID            string `json:"id"`
 	Email         string `json:"email"`
@@ -11,7 +10,6 @@ type GoogleUserData struct {
 	Picture       string `json:"picture"`
 }
 
-// Token response
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
@@ -21,22 +19,19 @@ type TokenResponse struct {
 	IDToken      string `json:"id_token,omitempty"`
 }
 
-// OAuthLoginRequest represents the request to initiate OAuth login
 type OAuthLoginRequest struct {
 	Provider string `json:"provider" binding:"required,oneof=google facebook microsoft"`
-	AppID    string `json:"app_id" binding:"omitempty"`   // Optional: frontend application ID
-	Platform string `json:"platform" binding:"omitempty"` // Optional: "web" (default) or "mobile"
+	AppID    string `json:"app_id"   binding:"omitempty"`
+	Platform string `json:"platform" binding:"omitempty,oneof=web mobile"`
 }
 
-// OAuthCallbackRequest represents the callback request from OAuth provider
 type OAuthCallbackRequest struct {
 	Provider string `json:"provider" binding:"required,oneof=google facebook microsoft"`
-	Code     string `json:"code" binding:"required"`
-	State    string `json:"state" binding:"required"`
-	AppID    string `json:"app_id" binding:"omitempty"` // Application ID to redirect back to
+	Code     string `json:"code"     binding:"required"`
+	State    string `json:"state"    binding:"required"`
+	AppID    string `json:"app_id"   binding:"omitempty"`
 }
 
-// OAuthUrlResponse contains the URL to redirect the user to for OAuth login
 type OAuthUrlResponse struct {
 	AuthURL string `json:"auth_url"`
 }

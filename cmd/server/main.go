@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -12,41 +12,62 @@ import (
 	"go-gin-clean/internal/infrastructure"
 	"go-gin-clean/internal/model/validator"
 	"go-gin-clean/pkg/config"
+	"go-gin-clean/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/rabbitmq/amqp091-go"
+	amqp "github.com/rabbitmq/amqp091-go"
+	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func main() {
-	if err := godotenv.Load(".env"); err != nil {
-		log.Println("Warning: .env file not found")
-	}
+	_ = godotenv.Load(".env")
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Error loading configuration: %v", err)
+		panic("failed to load configuration: " + err.Error())
 	}
+
+	logger.Init(cfg.Server.Environment)
+	defer logger.Sync()
 
 	db, err := setupDatabase(&cfg.Database)
 	if err != nil {
-		log.Fatalf("Error connecting to database: %v", err)
+		logger.Fatal("failed to connect to database", zap.Error(err))
 	}
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	conn, ch, err := setupRabbitMQ(&cfg.RabbitMQ)
+	conn, err := setupRabbitMQ(&cfg.RabbitMQ)
 	if err != nil {
-		log.Fatalf("Error connecting to RabbitMQ: %v", err)
+		logger.Fatal("failed to connect to RabbitMQ", zap.Error(err))
 	}
 
-	container := infrastructure.NewContainer(db, ch, cfg)
+	container := infrastructure.NewContainer(db, conn, cfg)
 
-	go container.OutboxWorker.Run(rootCtx)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		container.OutboxWorker.Run(rootCtx)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		container.ConsumerWorker.Run(rootCtx)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		watchRabbitMQConnection(rootCtx, conn, &cfg.RabbitMQ, container)
+	}()
 
 	if cfg.Server.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -54,10 +75,10 @@ func main() {
 
 	router := gin.Default()
 	if err := validator.RegisterCustomValidations(); err != nil {
-		log.Fatalf("failed to register custom validations: %v", err)
+		logger.Fatal("failed to register custom validations", zap.Error(err))
 	}
 
-	route.SetupRoutes(router, &container.UserHandler, &container.OauthHandler, &container.JWTService)
+	route.SetupRoutes(router, &container.UserHandler, &container.OauthHandler, container.JWTService)
 
 	srv := &http.Server{
 		Addr:    cfg.Server.Address(),
@@ -65,53 +86,49 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Starting server on %s...", cfg.Server.Address())
+		logger.Info("server starting", zap.String("address", cfg.Server.Address()))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("Failed to start server:", err)
+			logger.Fatal("server listen failed", zap.Error(err))
 		}
 	}()
 
 	<-rootCtx.Done()
-	log.Println("Received shutdown signal. Starting graceful shutdown...")
+	logger.Info("shutdown signal received, starting graceful shutdown")
 
 	shutdownCtx, cancelServer := context.WithTimeout(context.Background(), time.Duration(cfg.Server.Timeout)*time.Second)
 	defer cancelServer()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Server forced to shutdown (timeout): %v", err)
+		logger.Warn("server forced to shutdown", zap.Error(err))
 	}
 
+	logger.Info("waiting for background tasks to finish...")
+	wg.Wait()
+
 	if db != nil {
-		dbSQL, err := db.DB()
-		if err == nil {
+		if dbSQL, err := db.DB(); err == nil {
 			dbSQL.Close()
 		}
 	}
 
-	if ch != nil {
-		ch.Close()
-	}
 	if conn != nil {
 		conn.Close()
 	}
 
-	log.Println("Server exiting")
+	logger.Info("server exited")
 }
 
 func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-	dsn := cfg.DSN()
-
-	var logLevel logger.LogLevel
+	var logLevel gormlogger.LogLevel
 	if cfg.Host == "localhost" || cfg.Host == "127.0.0.1" {
-		logLevel = logger.Info
+		logLevel = gormlogger.Info
 	} else {
-		logLevel = logger.Error
+		logLevel = gormlogger.Error
 	}
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
+	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(logLevel),
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -127,18 +144,55 @@ func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-func setupRabbitMQ(cfg *config.RabbitMQConfig) (*amqp091.Connection, *amqp091.Channel, error) {
-	dsn := cfg.DSN()
-	conn, err := amqp091.Dial(dsn)
-	if err != nil {
-		return nil, nil, err
-	}
+func setupRabbitMQ(cfg *config.RabbitMQConfig) (*amqp.Connection, error) {
+	return amqp.Dial(cfg.DSN())
+}
 
-	ch, err := conn.Channel()
-	if err != nil {
-		conn.Close()
-		return nil, nil, err
-	}
+func watchRabbitMQConnection(ctx context.Context, conn *amqp.Connection, cfg *config.RabbitMQConfig, container *infrastructure.Container) {
+	const (
+		initDelay = 2 * time.Second
+		maxDelay  = 1 * time.Minute
+	)
 
-	return conn, ch, nil
+	connClose := conn.NotifyClose(make(chan *amqp.Error, 1))
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case amqpErr, ok := <-connClose:
+			if !ok {
+				return
+			}
+			logger.Warn("rabbitmq: connection lost, reconnecting", zap.Error(amqpErr))
+		}
+
+		delay := initDelay
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+
+			newConn, err := setupRabbitMQ(cfg)
+			if err != nil {
+				logger.Warn("rabbitmq: reconnect failed, retrying", zap.Duration("delay", delay), zap.Error(err))
+				delay *= 2
+				if delay > maxDelay {
+					delay = maxDelay
+				}
+				continue
+			}
+
+			logger.Info("rabbitmq: connection restored, reinitializing workers")
+			if err := container.PublisherService.UpdateConnection(newConn); err != nil {
+				logger.Error("rabbitmq: failed to update publisher connection", zap.Error(err))
+			}
+			container.ConsumerWorker.Reconnect(newConn)
+
+			connClose = newConn.NotifyClose(make(chan *amqp.Error, 1))
+			break
+		}
+	}
 }

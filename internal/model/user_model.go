@@ -1,8 +1,9 @@
 package model
 
 import (
-	"go-gin-clean/internal/entity"
 	"mime/multipart"
+
+	"go-gin-clean/internal/entity"
 
 	"github.com/google/uuid"
 )
@@ -10,7 +11,6 @@ import (
 type (
 	UserInfo struct {
 		ID       uuid.UUID     `json:"id"`
-		Code     string        `json:"code"`
 		Name     string        `json:"name"`
 		Email    string        `json:"email"`
 		Avatar   string        `json:"avatar,omitempty"`
@@ -19,8 +19,8 @@ type (
 	}
 
 	LoginRequest struct {
-		Email    string `json:"email" binding:"required,email" validate:"required,email"`
-		Password string `json:"password" binding:"required" validate:"required"`
+		Email    string `json:"email"    binding:"required,email"`
+		Password string `json:"password" binding:"required"`
 	}
 
 	LoginResponse struct {
@@ -29,9 +29,9 @@ type (
 	}
 
 	RegisterRequest struct {
-		Name     string `json:"name" binding:"required" validate:"required"`
-		Email    string `json:"email" binding:"required,email" validate:"required,email"`
-		Password string `json:"password" binding:"required" validate:"required,password"`
+		Name     string `json:"name"     binding:"required,min=2,max=100"`
+		Email    string `json:"email"    binding:"required,email,max=254"`
+		Password string `json:"password" binding:"required,password"`
 	}
 
 	RefreshTokenResponse struct {
@@ -39,42 +39,60 @@ type (
 		RefreshToken string `json:"refresh_token"`
 	}
 
-	ResetPasswordRequest struct {
-		Token       string `json:"token" binding:"required" validate:"required"`
-		NewPassword string `json:"new_password" binding:"required,min=8" validate:"required,password"`
-	}
-
 	VerifyEmailRequest struct {
-		Token string `json:"token" binding:"required" validate:"required"`
-	}
-
-	SendResetPasswordRequest struct {
-		Email string `json:"email" binding:"required,email" validate:"required,email"`
+		Token string `json:"token" binding:"required"`
 	}
 
 	SendVerifyEmailRequest struct {
-		Email string `json:"email" binding:"required,email" validate:"required,email"`
+		Email string `json:"email" binding:"required,email"`
+	}
+
+	SendResetPasswordRequest struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+
+	ResetPasswordRequest struct {
+		Token       string `json:"token"        binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,password"`
 	}
 
 	ChangePasswordRequest struct {
-		OldPassword string `json:"old_password" binding:"required" validate:"required"`
-		NewPassword string `json:"new_password" binding:"required,min=8" validate:"required,password"`
+		OldPassword string `json:"old_password" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,password"`
 	}
 
 	CreateUserRequest struct {
-		Name     string        `json:"name" binding:"required" validate:"required"`
-		Email    string        `json:"email" binding:"required,email" validate:"required,email"`
-		Password string        `json:"password" binding:"required,min=8" validate:"required,password"`
-		Gender   entity.Gender `json:"gender,omitempty" validate:"omitempty,gender"`
+		Name     string        `json:"name"     binding:"required,min=2,max=100"`
+		Email    string        `json:"email"    binding:"required,email,max=254"`
+		Password string        `json:"password" binding:"required,password"`
+		Gender   entity.Gender `json:"gender"   binding:"omitempty,gender"`
 	}
 
 	UpdateUserRequest struct {
-		Name   *string               `form:"name"`
-		Gender *entity.Gender        `form:"gender" validate:"omitempty,gender"`
+		Name   *string               `form:"name"   binding:"omitempty,min=2,max=100"`
+		Gender *entity.Gender        `form:"gender" binding:"omitempty,gender"`
 		Avatar *multipart.FileHeader `form:"avatar"`
 	}
 
 	ChangeUserStatusRequest struct {
-		IsActive bool `json:"is_active" binding:"required" validate:"required"`
+		IsActive *bool `json:"is_active" binding:"required"`
 	}
 )
+
+func FormatUserInfo(user *entity.User) *UserInfo {
+	return &UserInfo{
+		ID:       user.ID,
+		Name:     user.Name,
+		Email:    user.Email,
+		Avatar:   user.Avatar,
+		Gender:   user.Gender,
+		IsActive: user.IsActive,
+	}
+}
+
+func FormatLoginResponse(accessToken, refreshToken string) *LoginResponse {
+	return &LoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}
+}

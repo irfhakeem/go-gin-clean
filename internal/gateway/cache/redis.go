@@ -3,12 +3,25 @@ package cache
 import (
 	"context"
 	"encoding/json"
-	"go-gin-clean/pkg/config"
 	"strconv"
 	"time"
 
+	"go-gin-clean/pkg/config"
+
+	pkgerror "go-gin-clean/pkg/error"
+
 	"github.com/redis/go-redis/v9"
 )
+
+type CacheServiceInterface interface {
+	Set(ctx context.Context, key string, value any) error
+	Get(ctx context.Context, key string, dest any) error
+	GetString(ctx context.Context, key string) (string, error)
+	Delete(ctx context.Context, key string) error
+	DeletePattern(ctx context.Context, pattern string) error
+	Exists(ctx context.Context, key string) (bool, error)
+	SetWithExpiration(ctx context.Context, key string, value any, expiration time.Duration) error
+}
 
 type RedisService struct {
 	cfg    *config.RedisConfig
@@ -17,7 +30,7 @@ type RedisService struct {
 
 func NewRedisService(cfg *config.RedisConfig) *RedisService {
 	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.Host + ":" + strconv.Itoa(cfg.Port), // Addr biasanya berupa "host:port", misal "localhost:6379"
+		Addr:     cfg.Host + ":" + strconv.Itoa(cfg.Port),
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	})
@@ -36,7 +49,7 @@ func (r *RedisService) Set(ctx context.Context, key string, value any) error {
 func (r *RedisService) Get(ctx context.Context, key string, dest any) error {
 	val, err := r.client.Get(ctx, key).Result()
 	if err == redis.Nil {
-		return redis.Nil
+		return pkgerror.ErrCacheMiss
 	}
 	if err != nil {
 		return err

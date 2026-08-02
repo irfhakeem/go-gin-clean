@@ -6,8 +6,16 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"fmt"
+
 	"go-gin-clean/pkg/config"
 )
+
+type AESServiceInterface interface {
+	EncryptInternal(plaintext string) (string, error)
+	DecryptInternal(ciphertext string) (string, error)
+	EncryptURLSafe(plaintext string) (string, error)
+	DecryptURLSafe(ciphertext string) (string, error)
+}
 
 type AESService struct {
 	cfg *config.AESConfig

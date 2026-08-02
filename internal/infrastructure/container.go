@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"go-gin-clean/internal/delivery/http"
 	"go-gin-clean/internal/gateway/cache"
+	"go-gin-clean/internal/gateway/mailer"
 	"go-gin-clean/internal/gateway/media"
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/gateway/security"
@@ -11,50 +12,57 @@ import (
 	"go-gin-clean/internal/usecase"
 	"go-gin-clean/pkg/config"
 
-	"github.com/rabbitmq/amqp091-go"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"gorm.io/gorm"
 )
 
 type Container struct {
-	UserHandler  http.UserHandler
-	OauthHandler http.OAuthHandler
-	JWTService   security.JWTService
-	OAuthService security.OAuthService
-	OutboxWorker *worker.OutboxWorker
+	UserHandler      http.UserHandler
+	OauthHandler     http.OAuthHandler
+	JWTService       security.JWTServiceInterface
+	OAuthService     security.OAuthServiceInterface
+	PublisherService messaging.PublisherServiceInterface
+	OutboxWorker     *worker.OutboxWorker
+	ConsumerWorker   *worker.ConsumerWorker
 }
 
-func NewContainer(db *gorm.DB, ch *amqp091.Channel, cfg *config.Config) *Container {
-	// Init repositories
+func NewContainer(db *gorm.DB, conn *amqp.Connection, cfg *config.Config) *Container {
 	userRepo := repository.NewUserRepository(db)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 	outboxRepo := repository.NewOutboxRepository(db)
 
-	// Init services
 	jwtService := security.NewJWTService(&cfg.JWT)
-	passwordService := security.NewBcryptService()
+	bcryptService := security.NewBcryptService()
 	oauthService := security.NewOAuthService(&cfg.OAuth)
 	aesService := security.NewAESService(&cfg.AES)
-	cloudinaryService := media.NewCloudinaryService(&cfg.Cloudinary)
-	localStorageService := media.NewLocalStorageService("")
 	redisService := cache.NewRedisService(&cfg.Redis)
-	publisherService := messaging.NewPublisherService(ch, cfg.RabbitMQ.Exchange)
+	smtpService := mailer.NewSMTPService(&cfg.Email)
+	publisherService := messaging.NewPublisherService(conn, cfg.RabbitMQ.Exchange)
 
-	// Init use cases
+	var storageService media.StorageServiceInterface
+	if cfg.Cloudinary.CloudinaryURL != "" && cfg.Cloudinary.CloudinaryURL != "cloudinary://API_KEY:API_SECRET@CLOUD_NAME" {
+		storageService = media.NewCloudinaryService(&cfg.Cloudinary)
+	} else {
+		storageService = media.NewLocalStorageService("")
+	}
+
 	outboxUseCase := usecase.NewOutboxUseCase(outboxRepo, publisherService, cfg.RabbitMQ.Exchange)
-	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, outboxUseCase, jwtService, passwordService, oauthService, aesService, cloudinaryService, localStorageService, redisService)
+	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, outboxUseCase, jwtService, bcryptService, oauthService, aesService, storageService, redisService)
+	emailUseCase := usecase.NewEmailUseCase(smtpService, cfg.Server.AppName)
 
-	// Init handlers
 	userHandler := http.NewUserHandler(userUseCase)
 	oauthHandler := http.NewOAuthHandler(userUseCase)
 
-	// Init workers
 	outboxWorker := worker.NewOutboxWorker(outboxUseCase)
+	consumerWorker := worker.NewConsumerWorker(conn, cfg.RabbitMQ.Exchange, emailUseCase)
 
 	return &Container{
-		UserHandler:  *userHandler,
-		OauthHandler: *oauthHandler,
-		JWTService:   *jwtService,
-		OAuthService: *oauthService,
-		OutboxWorker: outboxWorker,
+		UserHandler:      *userHandler,
+		OauthHandler:     *oauthHandler,
+		JWTService:       jwtService,
+		OAuthService:     oauthService,
+		PublisherService: publisherService,
+		OutboxWorker:     outboxWorker,
+		ConsumerWorker:   consumerWorker,
 	}
 }

@@ -1,5 +1,3 @@
--- Migration: create_outbox
-
 CREATE TYPE outbox_status AS ENUM ('pending', 'processing', 'published', 'failed');
 
 CREATE TABLE outbox_messages (

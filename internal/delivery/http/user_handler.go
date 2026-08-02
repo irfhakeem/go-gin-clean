@@ -1,35 +1,45 @@
 package http
 
 import (
-	"go-gin-clean/internal/delivery/http/response"
+	"net/http"
+
 	"go-gin-clean/internal/model"
 	"go-gin-clean/internal/model/validator"
 	"go-gin-clean/internal/usecase"
-	"net/http"
+	pkgerror "go-gin-clean/pkg/error"
+	"go-gin-clean/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
 
 type UserHandler struct {
-	userUseCase *usecase.UserUseCase
+	userUseCase usecase.UserUseCaseInterface
 }
 
-func NewUserHandler(userUseCase *usecase.UserUseCase) *UserHandler {
+func NewUserHandler(userUseCase usecase.UserUseCaseInterface) *UserHandler {
 	return &UserHandler{
 		userUseCase: userUseCase,
+	}
+}
+
+func bindError(c *gin.Context, err error) {
+	if errs, ok := validator.BuildValidationErrors(err); ok {
+		response.ValidationError(c, errs)
+	} else {
+		response.Error(c, pkgerror.BadRequest(pkgerror.ErrInvalidRequestBody, err))
 	}
 }
 
 func (h *UserHandler) Login(c *gin.Context) {
 	var req model.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
 	result, err := h.userUseCase.Login(c.Request.Context(), &req)
 	if err != nil {
-		response.Error(c, "Login failed", err.Error(), http.StatusUnauthorized)
+		response.Error(c, err)
 		return
 	}
 
@@ -41,36 +51,36 @@ func (h *UserHandler) Login(c *gin.Context) {
 		Path:     "/",
 	})
 
-	response.Success(c, "Login successful", gin.H{
+	response.Success(c, pkgerror.LoginSuccess, gin.H{
 		"access_token": result.AccessToken,
 	}, http.StatusOK)
 }
 
 func (h *UserHandler) Register(c *gin.Context) {
 	var req model.RegisterRequest
-	if err := c.ShouldBind(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		bindError(c, err)
 		return
 	}
 
 	if err := h.userUseCase.Register(c.Request.Context(), &req); err != nil {
-		response.Error(c, "Registration failed", err.Error(), http.StatusBadRequest)
+		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, "Registration successful", nil, http.StatusCreated)
+	response.Success(c, pkgerror.RegisterSuccess, nil, http.StatusCreated)
 }
 
 func (h *UserHandler) RefreshToken(c *gin.Context) {
 	cookie, err := c.Cookie("refresh_token")
 	if err != nil {
-		response.Error(c, "Token not found", "Missing user credentials", http.StatusBadRequest)
+		response.Error(c, pkgerror.BadRequest(pkgerror.ErrTokenNotFound, err))
 		return
 	}
 
 	result, err := h.userUseCase.RefreshToken(c.Request.Context(), cookie)
 	if err != nil {
-		response.Error(c, "Failed to refresh token", err.Error(), http.StatusUnauthorized)
+		response.Error(c, err)
 		return
 	}
 
@@ -82,122 +92,126 @@ func (h *UserHandler) RefreshToken(c *gin.Context) {
 		Path:     "/",
 	})
 
-	response.Success(c, "Token refreshed successfully", result.AccessToken, http.StatusOK)
+	response.Success(c, pkgerror.RefreshSuccess, result.AccessToken, http.StatusOK)
 }
 
 func (h *UserHandler) Logout(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		response.Error(c, "Unauthorized", "", http.StatusUnauthorized)
+		response.Error(c, pkgerror.Unauthorized(pkgerror.ErrUnauthorized, nil))
 		return
 	}
 
-	err := h.userUseCase.Logout(c.Request.Context(), userID.(string))
-	if err != nil {
-		response.Error(c, "Logout failed", err.Error(), http.StatusInternalServerError)
+	if err := h.userUseCase.Logout(c.Request.Context(), userID.(string)); err != nil {
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "Logout successful", nil, http.StatusOK)
+
+	response.Success(c, pkgerror.LogoutSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) SendVerifyEmail(c *gin.Context) {
 	var req model.SendVerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
 	if err := h.userUseCase.SendVerifyEmail(c.Request.Context(), req); err != nil {
-		response.Error(c, "Failed to send verification email", err.Error(), http.StatusInternalServerError)
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "Verification email sent successfully", nil, http.StatusOK)
+
+	response.Success(c, pkgerror.SendVerificationEmailSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) VerifyEmail(c *gin.Context) {
 	var req model.VerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
 	if err := h.userUseCase.VerifyEmail(c.Request.Context(), req.Token); err != nil {
-		response.Error(c, "Email verification failed", err.Error(), http.StatusBadRequest)
+		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, "Email verified successfully", nil, http.StatusOK)
+	response.Success(c, pkgerror.VerifyEmailSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) SendResetPassword(c *gin.Context) {
 	var req model.SendResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
 	if err := h.userUseCase.SendResetPassword(c.Request.Context(), req); err != nil {
-		response.Error(c, "Failed to send reset password email", err.Error(), http.StatusInternalServerError)
+		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, "Reset password email sent successfully", nil, http.StatusOK)
+	response.Success(c, pkgerror.SendResetPasswordEmailSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) ResetPassword(c *gin.Context) {
 	var req model.ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
 	if err := h.userUseCase.ResetPassword(c.Request.Context(), &req); err != nil {
-		response.Error(c, "Password reset failed", err.Error(), http.StatusBadRequest)
+		response.Error(c, err)
+		return
 	}
 
-	response.Success(c, "Password reset successful", nil, http.StatusOK)
+	response.Success(c, pkgerror.ResetPasswordSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) Profile(c *gin.Context) {
-	userCode, exist := c.Get("user_code")
+	userID, exist := c.Get("user_id")
 	if !exist {
-		response.Error(c, "Unauthorized", "user credentials not found", http.StatusUnauthorized)
+		response.Error(c, pkgerror.Unauthorized(pkgerror.ErrUnauthorized, nil))
 		return
 	}
 
-	result, err := h.userUseCase.GetUserByCode(c.Request.Context(), userCode.(string))
+	result, err := h.userUseCase.GetUserByID(c.Request.Context(), userID.(string))
 	if err != nil {
-		response.Error(c, "Failed to load profile", err.Error(), http.StatusInternalServerError)
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "Profile loaded successfully", result, http.StatusOK)
+
+	response.Success(c, pkgerror.GetUserInfoSuccess, result, http.StatusOK)
 }
 
 func (h *UserHandler) UpdateProfile(c *gin.Context) {
-	userCode, exist := c.Get("user_code")
+	userID, exist := c.Get("user_id")
 	if !exist {
-		response.Error(c, "Unauthorized", "user credentials not found", http.StatusUnauthorized)
+		response.Error(c, pkgerror.Unauthorized(pkgerror.ErrUnauthorized, nil))
 		return
 	}
 
 	var req model.UpdateUserRequest
 	if err := c.ShouldBind(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
-	result, err := h.userUseCase.UpdateUser(c.Request.Context(), userCode.(string), &req)
+	result, err := h.userUseCase.UpdateUser(c.Request.Context(), userID.(string), &req)
 	if err != nil {
-		response.Error(c, "Failed to update profile", err.Error(), http.StatusBadRequest)
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "Profile updated successfully", result, http.StatusOK)
+
+	response.Success(c, pkgerror.UpdateUserSuccess, result, http.StatusOK)
 }
 
 func (h *UserHandler) GetAllUsers(c *gin.Context) {
 	var req model.PaginationRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.Error(c, "Failed to bind query", err.Error(), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
@@ -210,100 +224,104 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 
 	result, err := h.userUseCase.GetAllUsers(c.Request.Context(), req.Page, req.PerPage, req.Search)
 	if err != nil {
-		response.Error(c, "Failed to get all users", err.Error(), http.StatusInternalServerError)
+		response.Error(c, err)
 		return
 	}
-	response.SuccessPagination(c, result.Data, response.SetMeta(req.Page, req.PerPage, result.Total, result.TotalPages))
+
+	response.SuccessPagination(c, pkgerror.GetAllUsersSuccess, result.Data, response.SetMeta(req.Page, req.PerPage, result.Total, result.TotalPages))
 }
 
-func (h *UserHandler) GetUserByCode(c *gin.Context) {
-	userCode := c.Param("code")
+func (h *UserHandler) GetUserByID(c *gin.Context) {
+	userID := c.Param("id")
 
-	result, err := h.userUseCase.GetUserByCode(c.Request.Context(), userCode)
+	result, err := h.userUseCase.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
-		response.Error(c, "User not found", err.Error(), http.StatusNotFound)
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "User retrieved successfully", result, http.StatusOK)
+
+	response.Success(c, pkgerror.GetUserInfoSuccess, result, http.StatusOK)
 }
 
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req model.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
 	result, err := h.userUseCase.CreateUser(c.Request.Context(), &req)
 	if err != nil {
-		response.Error(c, "Failed to create user", err.Error(), http.StatusBadRequest)
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "User created successfully", result, http.StatusCreated)
+
+	response.Success(c, pkgerror.CreateUserSuccess, result, http.StatusCreated)
 }
 
 func (h *UserHandler) UpdateUser(c *gin.Context) {
-	userCode := c.Param("code")
+	userID := c.Param("id")
 
 	var req model.UpdateUserRequest
 	if err := c.ShouldBind(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
-	result, err := h.userUseCase.UpdateUser(c.Request.Context(), userCode, &req)
+	result, err := h.userUseCase.UpdateUser(c.Request.Context(), userID, &req)
 	if err != nil {
-		response.Error(c, "Failed to update user", err.Error(), http.StatusBadRequest)
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "User updated successfully", result, http.StatusOK)
+
+	response.Success(c, pkgerror.UpdateUserSuccess, result, http.StatusOK)
 }
 
 func (h *UserHandler) ChangePassword(c *gin.Context) {
 	userID, exist := c.Get("user_id")
 	if !exist {
-		response.Error(c, "Unauthorized", "user credentials not found", http.StatusUnauthorized)
+		response.Error(c, pkgerror.Unauthorized(pkgerror.ErrUnauthorized, nil))
 		return
 	}
 
 	var req model.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
-	err := h.userUseCase.ChangePassword(c.Request.Context(), userID.(string), &req)
-	if err != nil {
-		response.Error(c, "Password change failed", err.Error(), http.StatusBadRequest)
+	if err := h.userUseCase.ChangePassword(c.Request.Context(), userID.(string), &req); err != nil {
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "Password changed successfully", nil, http.StatusOK)
+
+	response.Success(c, pkgerror.ChangePasswordSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) ChangeStatus(c *gin.Context) {
-	userCode := c.Param("code")
+	userID := c.Param("id")
 
 	var req model.ChangeUserStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, "Failed to bind body", validator.BuildValidationMessage(err), http.StatusBadRequest)
+		bindError(c, err)
 		return
 	}
 
-	err := h.userUseCase.ChangeStatus(c.Request.Context(), userCode, req)
-	if err != nil {
-		response.Error(c, "Failed to change user status", err.Error(), http.StatusInternalServerError)
+	if err := h.userUseCase.ChangeStatus(c.Request.Context(), userID, req); err != nil {
+		response.Error(c, err)
 		return
 	}
-	response.Success(c, "User status changed successfully", nil, http.StatusOK)
+
+	response.Success(c, pkgerror.ChangeUserStatusSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) DeleteUser(c *gin.Context) {
-	userCode := c.Param("code")
+	userID := c.Param("id")
 
-	if err := h.userUseCase.DeleteUser(c.Request.Context(), userCode); err != nil {
-		response.Error(c, "Failed to delete user", err.Error(), http.StatusInternalServerError)
+	if err := h.userUseCase.DeleteUser(c.Request.Context(), userID); err != nil {
+		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, "User deleted successfully", nil, http.StatusOK)
+	response.Success(c, pkgerror.DeleteUserSuccess, nil, http.StatusOK)
 }

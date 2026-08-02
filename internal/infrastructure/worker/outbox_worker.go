@@ -2,10 +2,12 @@ package worker
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"go-gin-clean/internal/usecase"
+	"go-gin-clean/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -41,10 +43,10 @@ func (w *OutboxWorker) WithPollInterval(d time.Duration) *OutboxWorker {
 }
 
 func (w *OutboxWorker) Run(ctx context.Context) {
-	log.Println("[OutboxWorker] starting")
+	logger.Info("outbox worker starting")
 
 	if err := w.outboxUseCase.ResetStuck(ctx, w.stuckTimeout); err != nil {
-		log.Printf("[OutboxWorker] ResetStuck on startup error: %v", err)
+		logger.Error("outbox worker reset stuck on startup", zap.Error(err))
 	}
 
 	ticker := time.NewTicker(w.pollInterval)
@@ -55,18 +57,18 @@ func (w *OutboxWorker) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("[OutboxWorker] shutting down")
+			logger.Info("outbox worker shutting down")
 			return
 		case <-ticker.C:
 			if err := w.outboxUseCase.ProcessBatch(ctx, w.batchSize); err != nil {
-				log.Printf("[OutboxWorker] ProcessBatch error: %v", err)
+				logger.Error("outbox worker process batch", zap.Error(err))
 			}
 
 			stuckTick++
 			if stuckTick >= 10 {
 				stuckTick = 0
 				if err := w.outboxUseCase.ResetStuck(ctx, w.stuckTimeout); err != nil {
-					log.Printf("[OutboxWorker] ResetStuck periodic error: %v", err)
+					logger.Error("outbox worker reset stuck periodic", zap.Error(err))
 				}
 			}
 		}
