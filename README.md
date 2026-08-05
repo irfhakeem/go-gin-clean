@@ -1,218 +1,56 @@
 # go-gin-clean
 
-A Go backend template built with **Gin**, **Clean Architecture**, and production-ready patterns: JWT + OAuth 2.0 (web & mobile), outbox-based async messaging, Redis caching, and PostgreSQL.
+A Go backend template built with **Gin** and **Clean Architecture**.
 
----
+## Features
 
-## Architecture Overview
+- JWT auth + Google OAuth 2.0 (web & mobile)
+- Outbox pattern + RabbitMQ (async events, retry queue, dead-letter queue)
+- Redis caching
+- PostgreSQL (GORM) + SQL migrations
+- Email sending (SMTP)
+- File storage (local, Cloudinary, or MinIO)
+- Structured logging (Zap)
 
-The codebase follows Clean Architecture with a strict inward dependency rule — outer layers depend on inner layers, never the reverse.
-
-```
-HTTP Request
-     │
-     ▼
-┌─────────────┐
-│   Delivery  │  Handlers, middleware, routes (Gin)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   UseCase   │  Business logic, orchestration
-└──────┬──────┘
-       │
-  ┌────┴─────┐
-  ▼          ▼
-┌──────┐  ┌─────────┐
-│ Repo │  │ Gateway │  Database / Security / Cache / Messaging
-└──────┘  └─────────┘
-       │
-       ▼
-┌─────────────┐
-│   Entity    │  Domain models, pure Go, no dependencies
-└─────────────┘
-```
-
-### Outbox Pattern
-
-Events (e.g. `user.register`, `user.reset_password`) are written to the `outbox_messages` table inside the same DB transaction as the business operation. A background worker polls the table every 5 seconds and publishes them to RabbitMQ — guaranteeing at-least-once delivery with retry and dead-letter tracking.
-
-```
-Register/Reset → SaveOutboxMessage (DB) → OutboxWorker polls → PublisherService → RabbitMQ
-```
-
-### OAuth 2.0 (Web + Mobile)
-
-```
-Client → POST /auth/oauth2/url (provider, app_id, platform)
-       ← { auth_url }
-       → Redirect to Google
-       ← Google redirects to /auth/oauth2/google/callback
-       → State validated, tokens issued
-       ← Web:    302 → FRONTEND_URL/oauth/callback#access_token=...
-       ← Mobile: 302 → deep-link://oauth?access_token=...&refresh_token=...
-```
-
----
-
-## Directory Structure
-
-```
-go-gin-clean/
-├── cmd/
-│   ├── server/main.go          # App entrypoint
-│   └── migrate/main.go         # Migration CLI
-│
-├── internal/
-│   ├── delivery/http/          # Handlers, middleware, routes
-│   ├── usecase/                # Business logic
-│   │   ├── user_usecase.go
-│   │   └── outbox_usecase.go
-│   ├── repository/             # Database access (GORM)
-│   │   ├── user_repository.go
-│   │   ├── refresh_token_repository.go
-│   │   └── outbox_repository.go
-│   ├── gateway/
-│   │   ├── security/           # JWT, Bcrypt, AES, OAuth
-│   │   ├── cache/              # Redis
-│   │   ├── media/              # Cloudinary / local storage
-│   │   └── messaging/          # RabbitMQ publisher
-│   ├── entity/                 # Domain models
-│   ├── model/                  # DTOs, request/response structs
-│   └── infrastructure/
-│       ├── container.go        # Dependency wiring
-│       └── worker/
-│           └── outbox_worker.go
-│
-├── migrations/                 # SQL migration files (golang-migrate)
-├── pkg/
-│   ├── config/                 # Env-based configuration
-│   ├── errors/                 # Centralized error definitions
-│   └── utils/
-├── assets/                     # Local file storage
-├── Dockerfile
-├── docker-compose.yml
-└── .env.example
-```
-
----
-
-## Setup & Running
-
-### Prerequisites
+## Requirements
 
 - Go 1.24+
-- PostgreSQL 16+
-- Redis 7+
-- RabbitMQ 3+
-- Docker & Docker Compose (for local infra)
+- PostgreSQL, Redis, RabbitMQ (or `docker compose up -d`)
 
-### 1. Clone & install dependencies
+## Getting Started
 
 ```bash
 git clone <repo-url>
 cd go-gin-clean
 go mod download
+
+cp .env.example .env   # fill in your values
+
+docker compose up -d           # start postgres, redis, rabbitmq
+go run cmd/migrate/main.go up  # run migrations
+go run cmd/server/main.go      # start the server
 ```
 
-### 2. Configure environment
+Server runs at `http://localhost:3000`.
 
-```bash
-cp .env.example .env
+## Project Layout
+
+```
+cmd/server/      entrypoint
+cmd/migrate/     migration CLI
+internal/
+  delivery/      HTTP handlers, routes, middleware, MQ consumers
+  usecase/       business logic
+  repository/    database access
+  gateway/       security, cache, storage, messaging, mailer
+  entity/        domain models
+  model/         request/response DTOs
+  infrastructure/ dependency wiring, background workers
+migrations/      SQL migrations
+pkg/             config, errors, logger, utils
 ```
 
-Edit `.env` with your values. Key variables:
-
-```env
-# Server
-SERVER_PORT=3000
-ENVIRONMENT=development
-
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=your_password
-DB_NAME=go_clean_architecture
-
-# JWT
-JWT_ACCESS_SECRET=your-access-secret
-JWT_REFRESH_SECRET=your-refresh-secret
-JWT_ACCESS_EXPIRY=15m
-JWT_REFRESH_EXPIRY=168h
-
-# AES (32-char key, 16-char IV)
-AES_KEY=your-32-character-aes-key-here
-AES_IV=your-16-char-iv
-
-# Google OAuth
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URL=http://localhost:3000/api/v1/auth/oauth2/google/callback
-GOOGLE_ALLOWED_ORIGINS=http://localhost:3120
-
-# Multi-app OAuth (web)
-# Format: app_id=url;app_id2=url2
-FRONTEND_URLS=default=http://localhost:3120
-
-# Mobile deep links
-# Format: app_id=scheme://path;app_id2=scheme://path
-MOBILE_DEEP_LINKS=android=com.example.app://oauth/callback
-
-DEFAULT_APP_ID=default
-
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# RabbitMQ
-RABBITMQ_HOST=localhost
-RABBITMQ_PORT=5672
-RABBITMQ_USER=guest
-RABBITMQ_PASSWORD=guest
-RABBITMQ_EXCHANGE=main_event_bus
-```
-
-### 3. Start infrastructure
-
-```bash
-docker compose up -d
-```
-
-This starts PostgreSQL, Redis, and RabbitMQ. RabbitMQ management UI is available at `http://localhost:15672` (guest/guest).
-
-### 4. Run migrations
-
-```bash
-go run cmd/migrate/main.go up
-```
-
-Other migration commands:
-
-```bash
-go run cmd/migrate/main.go down            # Rollback last
-go run cmd/migrate/main.go version         # Current version
-go run cmd/migrate/main.go create <name>   # New migration pair
-```
-
-### 5. Run the server
-
-```bash
-go run cmd/server/main.go
-```
-
-**With hot reload (Air):**
-
-```bash
-go install github.com/cosmtrek/air@latest
-air
-```
-
-Server starts at `http://localhost:3000`.
-
----
-
-## API Endpoints
+## API
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -230,63 +68,28 @@ Server starts at `http://localhost:3000`.
 | PUT | `/api/v1/profile/change-password` | JWT | Change password |
 | POST | `/api/v1/profile/logout` | JWT | Logout |
 | GET | `/api/v1/users` | JWT | List users (paginated) |
-| GET | `/api/v1/users/:code` | JWT | Get user by code |
+| GET | `/api/v1/users/:id` | JWT | Get user by ID |
 | POST | `/api/v1/users` | JWT | Create user |
-| PUT | `/api/v1/users/:code` | JWT | Update user |
-| PUT | `/api/v1/users/:code/change-status` | JWT | Toggle active status |
-| DELETE | `/api/v1/users/:code` | JWT | Delete user |
+| PUT | `/api/v1/users/:id` | JWT | Update user |
+| PUT | `/api/v1/users/:id/change-status` | JWT | Toggle active status |
+| DELETE | `/api/v1/users/:id` | JWT | Delete user |
 
-**Authorization header:** `Authorization: Bearer <access_token>`
-
----
+Authenticated requests: `Authorization: Bearer <access_token>`
 
 ## Deployment
-
-### Build binary
 
 ```bash
 go build -ldflags="-s -w" -o bin/server ./cmd/server
 go build -ldflags="-s -w" -o bin/migrate ./cmd/migrate
-```
 
-### Docker
-
-```bash
-# Build
 docker build -t go-gin-clean:latest .
+docker run -d --name go-gin-clean -p 3000:3000 --env-file .env go-gin-clean:latest
 
-# Run (pass env file or individual -e flags)
-docker run -d \
-  --name go-gin-clean \
-  -p 3000:3000 \
-  --env-file .env \
-  go-gin-clean:latest
-```
-
-### Run migrations before deploying
-
-The migration binary is included in the Docker image at `/app/migrate`:
-
-```bash
-# From inside the container or as an init container
-./migrate up
-```
-
-Or run it as a separate one-off job before starting the app container:
-
-```bash
+# run migrations before starting the app
 docker run --rm --env-file .env go-gin-clean:latest ./migrate up
 ```
 
-### Production checklist
-
-- [ ] Set `ENVIRONMENT=production`
-- [ ] Use strong, randomly generated values for `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `AES_KEY`, `AES_IV`, `OAUTH_STATE_STRING`
-- [ ] Point `GOOGLE_REDIRECT_URL` to your production domain
-- [ ] Run migrations before deploying a new version
-- [ ] Ensure RabbitMQ exchange (`RABBITMQ_EXCHANGE`) exists and is durable
-
----
+Set `ENVIRONMENT=production` and use strong secrets for `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `AES_KEY`, `AES_IV`, and `OAUTH_STATE_STRING`.
 
 ## License
 
