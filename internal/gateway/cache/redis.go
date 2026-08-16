@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"time"
 
 	"go-gin-clean/pkg/config"
@@ -28,12 +27,7 @@ type RedisService struct {
 	client *redis.Client
 }
 
-func NewRedisService(cfg *config.RedisConfig) *RedisService {
-	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.Host + ":" + strconv.Itoa(cfg.Port),
-		Password: cfg.Password,
-		DB:       cfg.DB,
-	})
+func NewRedisService(client *redis.Client, cfg *config.RedisConfig) CacheServiceInterface {
 	return &RedisService{cfg: cfg, client: client}
 }
 

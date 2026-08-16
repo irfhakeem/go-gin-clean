@@ -13,11 +13,16 @@ import (
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
 )
 
+type StorageServiceInterface interface {
+	UploadFile(ctx context.Context, filename string, size int64, fileHeader multipart.FileHeader, filePath string) (*string, error)
+	DeleteFile(ctx context.Context, path string) error
+}
+
 type CloudinaryService struct {
 	cfg *config.CloudinaryConfig
 }
 
-func NewCloudinaryService(cfg *config.CloudinaryConfig) *CloudinaryService {
+func NewCloudinaryService(cfg *config.CloudinaryConfig) StorageServiceInterface {
 	return &CloudinaryService{cfg: cfg}
 }
 

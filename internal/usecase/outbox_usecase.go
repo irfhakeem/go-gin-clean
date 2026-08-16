@@ -8,6 +8,7 @@ import (
 	"go-gin-clean/internal/entity"
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/repository"
+	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
 
 	"go.uber.org/zap"
@@ -21,19 +22,19 @@ type OutboxUseCaseInterface interface {
 
 type OutboxUseCase struct {
 	outboxRepo repository.OutboxRepositoryInterface
-	publisher  messaging.PublisherServiceInterface
-	exchange   string
+	publisher  messaging.RabbitMQPublisherServiceInterface
+	cfg        *config.RabbitMQConfig
 }
 
 func NewOutboxUseCase(
 	outboxRepo repository.OutboxRepositoryInterface,
-	publisher messaging.PublisherServiceInterface,
-	exchange string,
+	publisher messaging.RabbitMQPublisherServiceInterface,
+	cfg *config.RabbitMQConfig,
 ) OutboxUseCaseInterface {
 	return &OutboxUseCase{
 		outboxRepo: outboxRepo,
 		publisher:  publisher,
-		exchange:   exchange,
+		cfg:        cfg,
 	}
 }
 
@@ -82,7 +83,7 @@ func (u *OutboxUseCase) SaveOutboxMessage(ctx context.Context, aggregateType, ag
 		AggregateType: aggregateType,
 		AggregateID:   aggregateID,
 		EventType:     eventType,
-		Exchange:      u.exchange,
+		Exchange:      u.cfg.Exchange,
 		Payload:       body,
 		Status:        entity.OutboxStatusPending,
 	}

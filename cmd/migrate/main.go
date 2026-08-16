@@ -35,9 +35,9 @@ func main() {
 
 	switch command {
 	case "up":
-		runMigrateUp(cfg)
+		runMigrateUp(&cfg.Database)
 	case "down":
-		runMigrateDown(cfg)
+		runMigrateDown(&cfg.Database)
 	case "force":
 		if len(os.Args) < 3 {
 			log.Fatal("Usage: migrate force <version>")
@@ -46,9 +46,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Invalid version: %v", err)
 		}
-		runMigrateForce(cfg, version)
+		runMigrateForce(&cfg.Database, version)
 	case "version":
-		runMigrateVersion(cfg)
+		runMigrateVersion(&cfg.Database)
 	case "create":
 		if len(os.Args) < 3 {
 			log.Fatal("Usage: migrate create <migration_name>")
@@ -60,9 +60,7 @@ func main() {
 }
 
 func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-	dsn := cfg.DSN()
-
-	db, err := gorm.Open(gormpostgres.Open(dsn), &gorm.Config{
+	db, err := gorm.Open(gormpostgres.Open(cfg.Url), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 
@@ -73,16 +71,8 @@ func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-func getMigrate(cfg *config.Config) (*migrate.Migrate, error) {
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.DBName,
-	)
-
-	db, err := sql.Open("postgres", connStr)
+func getMigrate(cfg *config.DatabaseConfig) (*migrate.Migrate, error) {
+	db, err := sql.Open("postgres", cfg.Url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -104,7 +94,7 @@ func getMigrate(cfg *config.Config) (*migrate.Migrate, error) {
 	return m, nil
 }
 
-func runMigrateUp(cfg *config.Config) {
+func runMigrateUp(cfg *config.DatabaseConfig) {
 	log.Println("Running migrations up...")
 
 	m, err := getMigrate(cfg)
@@ -129,7 +119,7 @@ func runMigrateUp(cfg *config.Config) {
 	}
 }
 
-func runMigrateDown(cfg *config.Config) {
+func runMigrateDown(cfg *config.DatabaseConfig) {
 	log.Println("Running migrations down...")
 
 	m, err := getMigrate(cfg)
@@ -154,7 +144,7 @@ func runMigrateDown(cfg *config.Config) {
 	}
 }
 
-func runMigrateForce(cfg *config.Config, version int) {
+func runMigrateForce(cfg *config.DatabaseConfig, version int) {
 	log.Printf("Forcing migration to version %d...\n", version)
 
 	m, err := getMigrate(cfg)
@@ -170,7 +160,7 @@ func runMigrateForce(cfg *config.Config, version int) {
 	log.Printf("Successfully forced migration to version %d", version)
 }
 
-func runMigrateVersion(cfg *config.Config) {
+func runMigrateVersion(cfg *config.DatabaseConfig) {
 	m, err := getMigrate(cfg)
 	if err != nil {
 		log.Fatalf("Error initializing migrate: %v", err)

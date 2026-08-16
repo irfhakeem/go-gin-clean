@@ -10,18 +10,18 @@ import (
 	"go-gin-clean/pkg/config"
 )
 
-type AESServiceInterface interface {
-	EncryptInternal(plaintext string) (string, error)
-	DecryptInternal(ciphertext string) (string, error)
-	EncryptURLSafe(plaintext string) (string, error)
-	DecryptURLSafe(ciphertext string) (string, error)
+type EncryptionServiceInterface interface {
+	EncryptInternal(plainText string) (string, error)
+	DecryptInternal(cipherText string) (string, error)
+	EncryptURLSafe(plainText string) (string, error)
+	DecryptURLSafe(cipherText string) (string, error)
 }
 
 type AESService struct {
 	cfg *config.AESConfig
 }
 
-func NewAESService(cfg *config.AESConfig) *AESService {
+func NewAESService(cfg *config.AESConfig) EncryptionServiceInterface {
 	return &AESService{cfg: cfg}
 }
 

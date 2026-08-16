@@ -3,6 +3,7 @@ package messaging
 import (
 	"errors"
 	"fmt"
+	"go-gin-clean/pkg/config"
 	"log"
 	"sync"
 
@@ -15,31 +16,31 @@ const (
 	UserResetPasswordEvent = "user.reset_password"
 )
 
-type PublisherServiceInterface interface {
+type RabbitMQPublisherServiceInterface interface {
 	Publish(routingKey string, body []byte) error
 	UpdateConnection(conn *amqp091.Connection) error
 }
 
-type PublisherService struct {
-	conn     *amqp091.Connection
-	ch       *amqp091.Channel
-	exchange string
-	mu       sync.Mutex
+type RabbitMQPublisherService struct {
+	conn *amqp091.Connection
+	ch   *amqp091.Channel
+	cfg  *config.RabbitMQConfig
+	mu   sync.Mutex
 }
 
-func NewPublisherService(conn *amqp091.Connection, exchange string) *PublisherService {
+func NewRabbitMQPublisherService(conn *amqp091.Connection, cfg *config.RabbitMQConfig) *RabbitMQPublisherService {
 	ch, err := conn.Channel()
 	if err != nil {
 		return nil
 	}
-	return &PublisherService{
-		conn:     conn,
-		ch:       ch,
-		exchange: exchange,
+	return &RabbitMQPublisherService{
+		conn: conn,
+		ch:   ch,
+		cfg:  cfg,
 	}
 }
 
-func (p *PublisherService) Publish(routingKey string, body []byte) error {
+func (p *RabbitMQPublisherService) Publish(routingKey string, body []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -52,7 +53,7 @@ func (p *PublisherService) Publish(routingKey string, body []byte) error {
 		return err
 	}
 
-	log.Printf("[PublisherService] channel closed, reconnecting before retry (key=%s): %v", routingKey, err)
+	log.Printf("[RabbitMQPublisherService] channel closed, reconnecting before retry (key=%s): %v", routingKey, err)
 	if reconnErr := p.reconnect(); reconnErr != nil {
 		return fmt.Errorf("reconnect failed: %w", reconnErr)
 	}
@@ -60,16 +61,16 @@ func (p *PublisherService) Publish(routingKey string, body []byte) error {
 	return p.publish(routingKey, body)
 }
 
-func (p *PublisherService) UpdateConnection(conn *amqp091.Connection) error {
+func (p *RabbitMQPublisherService) UpdateConnection(conn *amqp091.Connection) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.conn = conn
 	return p.reconnect()
 }
 
-func (p *PublisherService) publish(routingKey string, body []byte) error {
+func (p *RabbitMQPublisherService) publish(routingKey string, body []byte) error {
 	return p.ch.Publish(
-		p.exchange,
+		p.cfg.Exchange,
 		routingKey,
 		false,
 		false,
@@ -81,7 +82,7 @@ func (p *PublisherService) publish(routingKey string, body []byte) error {
 	)
 }
 
-func (p *PublisherService) reconnect() error {
+func (p *RabbitMQPublisherService) reconnect() error {
 	if p.ch != nil {
 		p.ch.Close()
 	}
@@ -90,7 +91,7 @@ func (p *PublisherService) reconnect() error {
 		return err
 	}
 	p.ch = ch
-	log.Printf("[PublisherService] channel reconnected successfully")
+	log.Printf("[RabbitMQPublisherService] channel reconnected successfully")
 	return nil
 }
 

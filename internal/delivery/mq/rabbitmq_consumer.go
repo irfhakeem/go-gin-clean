@@ -204,75 +204,56 @@ func (c *Consumer) handleDelivery(ctx context.Context, d amqp.Delivery, retryQue
 		return
 	}
 
-	if IsRetryable(err) && retryCount(d, retryQueue) < MaxRetries {
+	retryCount := 0
+	if raw, ok := d.Headers["x-death"]; ok {
+		if deaths, ok := raw.([]any); ok {
+			for _, entry := range deaths {
+				table, ok := entry.(amqp.Table)
+				if !ok {
+					continue
+				}
+
+				queue, _ := table["queue"].(string)
+				if queue != retryQueue {
+					continue
+				}
+
+				if count, ok := table["count"].(int64); ok {
+					retryCount = int(count)
+					break
+				}
+			}
+		}
+	}
+
+	isRetryable := true
+
+	var nonRetryable *NonRetryableError
+	if errors.As(err, &nonRetryable) {
+		isRetryable = false
+	}
+
+	var smtpErr *textproto.Error
+	if errors.As(err, &smtpErr) {
+		isRetryable = smtpErr.Code < 500
+	}
+
+	if isRetryable && retryCount < MaxRetries {
 		logger.Warn("mq: retryable error, sending to retry queue", zap.String("routing_key", d.RoutingKey), zap.Error(err))
 		_ = d.Nack(false, false)
 		return
 	}
 
 	logger.Error("mq: permanent failure, parking in dead queue", zap.String("routing_key", d.RoutingKey), zap.Error(err))
-	if pubErr := c.publishDead(d); pubErr != nil {
+	if pubErr := c.ch.Publish(c.dlxExchange(), deadRoutingKey(d.RoutingKey), false, false, amqp.Publishing{
+		ContentType:  d.ContentType,
+		DeliveryMode: amqp.Persistent,
+		Headers:      d.Headers,
+		Body:         d.Body,
+	}); pubErr != nil {
 		logger.Error("mq: failed to park dead message, requeueing as last resort", zap.Error(pubErr))
 		_ = d.Nack(false, true)
 		return
 	}
 	_ = d.Ack(false)
-}
-
-func (c *Consumer) publishDead(d amqp.Delivery) error {
-	return c.ch.Publish(c.dlxExchange(), deadRoutingKey(d.RoutingKey), false, false, amqp.Publishing{
-		ContentType:  d.ContentType,
-		DeliveryMode: amqp.Persistent,
-		Headers:      d.Headers,
-		Body:         d.Body,
-	})
-}
-
-func retryCount(d amqp.Delivery, retryQueue string) int {
-	raw, ok := d.Headers["x-death"]
-	if !ok {
-		return 0
-	}
-	deaths, ok := raw.([]any)
-	if !ok {
-		return 0
-	}
-	for _, entry := range deaths {
-		table, ok := entry.(amqp.Table)
-		if !ok {
-			continue
-		}
-		if queue, _ := table["queue"].(string); queue != retryQueue {
-			continue
-		}
-		if count, ok := table["count"].(int64); ok {
-			return int(count)
-		}
-	}
-	return 0
-}
-
-type nonRetryableError struct{ error }
-
-func (e *nonRetryableError) Unwrap() error { return e.error }
-
-func NonRetryable(err error) error {
-	if err == nil {
-		return nil
-	}
-	return &nonRetryableError{err}
-}
-
-func IsRetryable(err error) bool {
-	var nre *nonRetryableError
-	if errors.As(err, &nre) {
-		return false
-	}
-
-	var smtpErr *textproto.Error
-	if errors.As(err, &smtpErr) {
-		return smtpErr.Code < 500
-	}
-
-	return true
 }

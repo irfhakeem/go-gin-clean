@@ -1,15 +1,17 @@
 package security
 
-import "golang.org/x/crypto/bcrypt"
+import (
+	"golang.org/x/crypto/bcrypt"
+)
 
-type BcryptServiceInterface interface {
+type HasherServiceInterface interface {
 	HashPassword(password string) (string, error)
 	ValidatePassword(password, hashedPassword string) error
 }
 
 type BcryptService struct{}
 
-func NewBcryptService() *BcryptService {
+func NewBcryptService() HasherServiceInterface {
 	return &BcryptService{}
 }
 

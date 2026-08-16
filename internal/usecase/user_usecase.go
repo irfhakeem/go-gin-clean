@@ -49,12 +49,14 @@ type UserUseCase struct {
 	refreshTokenRepo repository.RefreshTokenRepositoryInterface
 	outboxUseCase    OutboxUseCaseInterface
 
-	jwtService     security.JWTServiceInterface
-	bcryptService  security.BcryptServiceInterface
-	oauthService   security.OAuthServiceInterface
-	aesService     security.AESServiceInterface
-	storageService media.StorageServiceInterface
-	redisService   cache.CacheServiceInterface
+	jwtService    security.JWTServiceInterface
+	bcryptService security.HasherServiceInterface
+	oauthService  security.OAuthServiceInterface
+	aesService    security.EncryptionServiceInterface
+	mediaService  media.StorageServiceInterface
+	redisService  cache.CacheServiceInterface
+
+	cfg *config.ServerConfig
 }
 
 func NewUserUseCase(
@@ -62,11 +64,12 @@ func NewUserUseCase(
 	refreshTokenRepo repository.RefreshTokenRepositoryInterface,
 	outboxUseCase OutboxUseCaseInterface,
 	jwtService security.JWTServiceInterface,
-	bcryptService security.BcryptServiceInterface,
+	bcryptService security.HasherServiceInterface,
 	oauthService security.OAuthServiceInterface,
-	aesService security.AESServiceInterface,
-	storageService media.StorageServiceInterface,
+	aesService security.EncryptionServiceInterface,
+	mediaService media.StorageServiceInterface,
 	redisService cache.CacheServiceInterface,
+	cfg *config.ServerConfig,
 ) UserUseCaseInterface {
 	return &UserUseCase{
 		userRepo:         userRepo,
@@ -76,8 +79,9 @@ func NewUserUseCase(
 		bcryptService:    bcryptService,
 		oauthService:     oauthService,
 		aesService:       aesService,
-		storageService:   storageService,
+		mediaService:     mediaService,
 		redisService:     redisService,
+		cfg:              cfg,
 	}
 }
 
@@ -230,7 +234,7 @@ func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) 
 		return nil
 	}
 
-	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
+	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", u.cfg.AppUrl, token)
 	message := event.RegisterEvent{
 		UserEvent:       event.UserEvent{UserID: savedUser.ID, Name: savedUser.Name},
 		Email:           savedUser.Email,
@@ -313,7 +317,7 @@ func (u *UserUseCase) SendVerifyEmail(ctx context.Context, req model.SendVerifyE
 		return pkgerror.InternalServerError(pkgerror.ErrPrepareVerificationEmail, err)
 	}
 
-	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", config.GetAppURL(), token)
+	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", u.cfg.AppUrl, token)
 	message := event.RegisterEvent{
 		UserEvent:       event.UserEvent{UserID: user.ID, Name: user.Name},
 		Email:           user.Email,
@@ -372,7 +376,7 @@ func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendReset
 		return pkgerror.InternalServerError(pkgerror.ErrPrepareForgotPasswordEmail, err)
 	}
 
-	resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.GetAppURL(), token)
+	resetURL := fmt.Sprintf("%s/reset-password?token=%s", u.cfg.AppUrl, token)
 	message := event.ResetPasswordEvent{
 		UserEvent: event.UserEvent{UserID: user.ID, Name: user.Name},
 		Email:     user.Email,
@@ -526,7 +530,7 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, id string, req *model.Upda
 			return nil, pkgerror.BadRequest(pkgerror.ErrUpdateUser, pkgerror.ErrUnsupportedImageType)
 		}
 
-		path, err := u.storageService.UploadFile(
+		path, err := u.mediaService.UploadFile(
 			ctx,
 			fmt.Sprintf("avatar_%s_%d.jpg", user.ID.String(), time.Now().Unix()),
 			req.Avatar.Size,

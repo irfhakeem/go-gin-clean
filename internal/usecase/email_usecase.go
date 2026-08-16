@@ -3,6 +3,7 @@ package usecase
 import (
 	"fmt"
 	"go-gin-clean/internal/gateway/mailer"
+	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
 
 	"go.uber.org/zap"
@@ -14,19 +15,19 @@ type EmailUseCaseInterface interface {
 }
 
 type EmailUseCase struct {
-	application string
-	smtp        *mailer.SMTPService
+	smtp mailer.MailerServiceInterface
+	cfg  *config.ServerConfig
 }
 
-func NewEmailUseCase(smtp *mailer.SMTPService, application string) EmailUseCaseInterface {
+func NewEmailUseCase(smtp mailer.MailerServiceInterface, cfg *config.ServerConfig) EmailUseCaseInterface {
 	return &EmailUseCase{
-		application: application,
-		smtp:        smtp,
+		smtp: smtp,
+		cfg:  cfg,
 	}
 }
 
 func (e *EmailUseCase) SendVerifyEmail(to, name, url string) error {
-	subject := fmt.Sprintf("Verify your account - %s", e.application)
+	subject := fmt.Sprintf("Verify your account - %s", e.cfg.AppName)
 
 	data := map[string]any{
 		"Name":            name,
@@ -42,7 +43,7 @@ func (e *EmailUseCase) SendVerifyEmail(to, name, url string) error {
 }
 
 func (e *EmailUseCase) SendResetPasswordEmail(to, name, url string) error {
-	subject := fmt.Sprintf("Reset your password - %s", e.application)
+	subject := fmt.Sprintf("Reset your password - %s", e.cfg.AppName)
 
 	data := map[string]any{
 		"Name":             name,

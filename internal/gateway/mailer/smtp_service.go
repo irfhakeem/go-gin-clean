@@ -13,13 +13,13 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-type EmailDialer interface {
-	DialAndSend(m ...*gomail.Message) error
+type MailerServiceInterface interface {
+	SendEmail(to string, subject string, body string) error
+	LoadTemplate(templateName string, data any) (string, error)
 }
 
-type SMTPServiceInterface interface {
-	SendEmail(to, subject, body string) error
-	LoadTemplate(templateName string) (string, error)
+type EmailDialer interface {
+	DialAndSend(m ...*gomail.Message) error
 }
 
 type SMTPService struct {
@@ -27,7 +27,7 @@ type SMTPService struct {
 	dialer EmailDialer
 }
 
-func NewSMTPService(cfg *config.EmailConfig) *SMTPService {
+func NewSMTPService(cfg *config.EmailConfig) MailerServiceInterface {
 	dialer := gomail.NewDialer(
 		cfg.Host,
 		cfg.Port,

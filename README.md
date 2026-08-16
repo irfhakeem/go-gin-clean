@@ -50,29 +50,58 @@ migrations/      SQL migrations
 pkg/             config, errors, logger, utils
 ```
 
+## Dependency Direction
+
+```
+             ┌─────────────┐
+             │   Domain    │
+             │  (entity)   │
+             └──────▲──────┘
+                    │
+             ┌──────┴──────┐
+             │ Application │
+             │  (usecase)  │
+             └──────▲──────┘
+                    │
+       ┌────────────┴────────────┐
+       │                         │
+┌──────┴────────┐       ┌────────┴───────┐
+│ Infrastructure│       │   Interfaces   │
+│ (repository,  │       │  (delivery)    │
+│  gateway)     │       │                │
+│               │       │                │
+│ PostgreSQL    │       │ HTTP           │
+│ Redis         │       │ MQ consumers   │
+│ RabbitMQ      │       │                │
+│ SMTP / Storage│       │                │
+└───────────────┘       └────────────────┘
+```
+
+Arrows point inward: outer layers depend on inner ones, never the reverse. `entity` has no internal dependencies. `infrastructure/` wires all layers together at startup.
+
 ## API
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/v1/auth/register` | — | Register |
-| POST | `/api/v1/auth/login` | — | Login |
-| POST | `/api/v1/auth/refresh-token` | — | Refresh access token |
-| POST | `/api/v1/auth/verify-email` | — | Verify email |
-| POST | `/api/v1/auth/send-reset-password` | — | Request password reset |
-| POST | `/api/v1/auth/reset-password` | — | Reset password |
-| POST | `/api/v1/auth/resend-verification` | — | Resend verification email |
-| POST | `/api/v1/auth/oauth2/url` | — | Get OAuth login URL |
-| GET | `/api/v1/auth/oauth2/:provider/callback` | — | OAuth callback |
-| GET | `/api/v1/profile` | JWT | Get own profile |
-| PUT | `/api/v1/profile` | JWT | Update profile |
-| PUT | `/api/v1/profile/change-password` | JWT | Change password |
-| POST | `/api/v1/profile/logout` | JWT | Logout |
-| GET | `/api/v1/users` | JWT | List users (paginated) |
-| GET | `/api/v1/users/:id` | JWT | Get user by ID |
-| POST | `/api/v1/users` | JWT | Create user |
-| PUT | `/api/v1/users/:id` | JWT | Update user |
-| PUT | `/api/v1/users/:id/change-status` | JWT | Toggle active status |
-| DELETE | `/api/v1/users/:id` | JWT | Delete user |
+| Method | Path                                     | Auth | Description               |
+| ------ | ---------------------------------------- | ---- | ------------------------- |
+| POST   | `/api/v1/auth/register`                  | —    | Register                  |
+| POST   | `/api/v1/auth/login`                     | —    | Login                     |
+| POST   | `/api/v1/auth/refresh-token`             | —    | Refresh access token      |
+| POST   | `/api/v1/auth/verify-email`              | —    | Verify email              |
+| POST   | `/api/v1/auth/send-reset-password`       | —    | Request password reset    |
+| POST   | `/api/v1/auth/reset-password`            | —    | Reset password            |
+| POST   | `/api/v1/auth/resend-verification`       | —    | Resend verification email |
+| POST   | `/api/v1/auth/oauth2/url`                | —    | Get OAuth login URL       |
+| GET    | `/api/v1/auth/oauth2/:provider/callback` | —    | OAuth callback            |
+| GET    | `/api/v1/profile`                        | JWT  | Get own profile           |
+| PUT    | `/api/v1/profile`                        | JWT  | Update profile            |
+| PUT    | `/api/v1/profile/change-password`        | JWT  | Change password           |
+| POST   | `/api/v1/profile/logout`                 | JWT  | Logout                    |
+| GET    | `/api/v1/users`                          | JWT  | List users (paginated)    |
+| GET    | `/api/v1/users/:id`                      | JWT  | Get user by ID            |
+| POST   | `/api/v1/users`                          | JWT  | Create user               |
+| PUT    | `/api/v1/users/:id`                      | JWT  | Update user               |
+| PUT    | `/api/v1/users/:id/change-status`        | JWT  | Toggle active status      |
+| DELETE | `/api/v1/users/:id`                      | JWT  | Delete user               |
 
 Authenticated requests: `Authorization: Bearer <access_token>`
 

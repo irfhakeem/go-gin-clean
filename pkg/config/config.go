@@ -17,7 +17,6 @@ type Config struct {
 	RabbitMQ   RabbitMQConfig
 	Cloudinary CloudinaryConfig
 	Redis      RedisConfig
-	MinIO      MinIOConfig
 	Email      EmailConfig
 }
 
@@ -31,13 +30,11 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host         string
-	Port         int
-	User         string
-	Password     string
-	DBName       string
+	Url          string
 	MaxOpenConns int
 	MaxIdleConns int
+	MaxLifetime  time.Duration
+	MaxIdleTime  time.Duration
 }
 
 type JWTConfig struct {
@@ -66,10 +63,7 @@ type AESConfig struct {
 }
 
 type RabbitMQConfig struct {
-	Host          string
-	Port          int
-	Username      string
-	Password      string
+	Url           string
 	Exchange      string
 	QueueBaseName string
 }
@@ -84,15 +78,6 @@ type RedisConfig struct {
 	Password   string
 	DB         int
 	Expiration int
-}
-
-type MinIOConfig struct {
-	Endpoint        string
-	AccessKeyID     string
-	SecretAccessKey string
-	BucketName      string
-	UseSSL          bool
-	Region          string
 }
 
 type EmailConfig struct {
@@ -123,13 +108,11 @@ func Load() (*Config, error) {
 			Timeout:     getEnvAsInt("TIMEOUT", 30),
 		},
 		Database: DatabaseConfig{
-			Host:         getEnv("DB_HOST", "localhost"),
-			Port:         getEnvAsInt("DB_PORT", 5432),
-			User:         getEnv("DB_USER", "user"),
-			Password:     getEnv("DB_PASSWORD", "password"),
-			DBName:       getEnv("DB_NAME", "dbname"),
+			Url:          getEnv("DATABASE_URL", "postgres://user:password@localhost:5432/dbname?sslmode=disable"),
 			MaxOpenConns: getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns: getEnvAsInt("DB_MAX_IDLE_CONNS", 5),
+			MaxLifetime:  getEnvAsDuration("DB_MAX_LIFETIME", 30*time.Minute),
+			MaxIdleTime:  getEnvAsDuration("DB_MAX_IDLE_TIME", 10*time.Minute),
 		},
 		JWT: JWTConfig{
 			JWTIssuer:          getEnv("JWT_ISSUER", "go-gin-clean"),
@@ -154,10 +137,7 @@ func Load() (*Config, error) {
 			IV:  getEnv("AES_IV", "your-aes-initialization-vector"),
 		},
 		RabbitMQ: RabbitMQConfig{
-			Host:          getEnv("RABBITMQ_HOST", "localhost"),
-			Port:          getEnvAsInt("RABBITMQ_PORT", 5672),
-			Username:      getEnv("RABBITMQ_USER", "guest"),
-			Password:      getEnv("RABBITMQ_PASSWORD", "guest"),
+			Url:           getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 			Exchange:      getEnv("RABBITMQ_EXCHANGE", "main_event_bus"),
 			QueueBaseName: getEnv("RABBITMQ_QUEUE_BASE_NAME", "main-service"),
 		},
@@ -169,14 +149,6 @@ func Load() (*Config, error) {
 			Port:     getEnvAsInt("REDIS_PORT", 6379),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
-		},
-		MinIO: MinIOConfig{
-			Endpoint:        getEnv("MINIO_ENDPOINT", "localhost:9000"),
-			AccessKeyID:     getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-			SecretAccessKey: getEnv("MINIO_SECRET_KEY", "minioadmin"),
-			BucketName:      getEnv("MINIO_BUCKET_NAME", "my-bucket"),
-			UseSSL:          getEnvAsInt("MINIO_USE_SSL", 0) == 1,
-			Region:          getEnv("MINIO_REGION", "us-east-1"),
 		},
 		Email: EmailConfig{
 			Host:     getEnv("EMAIL_HOST", "smtp.example.com"),
@@ -190,19 +162,6 @@ func Load() (*Config, error) {
 
 func (c *ServerConfig) Address() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
-}
-
-func (c *DatabaseConfig) DSN() string {
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d",
-		c.Host, c.User, c.Password, c.DBName, c.Port)
-}
-
-func (c *RabbitMQConfig) DSN() string {
-	return fmt.Sprintf("amqp://%s:%s@%s:%d/", c.Username, c.Password, c.Host, c.Port)
-}
-
-func GetAppURL() string {
-	return getEnv("FRONTEND_URL", "http://localhost:3120")
 }
 
 // Helper
