@@ -49,7 +49,7 @@ func (r *RefreshTokenRepository) FindByUserID(ctx context.Context, userID string
 
 func (r *RefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID string) error {
 	return r.db.WithContext(ctx).Model(&entity.RefreshToken{}).
-		Where("user_id = ?::uuid", userID).
+		Where("user_id = ?::uuid AND is_revoked = ?", userID, false).
 		Update("is_revoked", true).Error
 }
 
