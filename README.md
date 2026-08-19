@@ -45,7 +45,7 @@ internal/
   gateway/       security, cache, storage, messaging, mailer
   entity/        domain models
   model/         request/response DTOs
-  infrastructure/ dependency wiring, background workers
+  worker/        background workers
 migrations/      SQL migrations
 pkg/             config, errors, logger, utils
 ```

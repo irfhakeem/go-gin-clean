@@ -3,8 +3,8 @@ package http
 import (
 	"net/http"
 
-	"go-gin-clean/internal/model"
-	"go-gin-clean/internal/model/validator"
+	"go-gin-clean/internal/dto"
+	"go-gin-clean/internal/dto/validator"
 	"go-gin-clean/internal/usecase"
 	pkgerror "go-gin-clean/pkg/error"
 	"go-gin-clean/pkg/response"
@@ -31,7 +31,7 @@ func bindError(c *gin.Context, err error) {
 }
 
 func (h *UserHandler) Login(c *gin.Context) {
-	var req model.LoginRequest
+	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -57,7 +57,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 }
 
 func (h *UserHandler) Register(c *gin.Context) {
-	var req model.RegisterRequest
+	var req dto.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -111,7 +111,7 @@ func (h *UserHandler) Logout(c *gin.Context) {
 }
 
 func (h *UserHandler) SendVerifyEmail(c *gin.Context) {
-	var req model.SendVerifyEmailRequest
+	var req dto.SendVerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -126,7 +126,7 @@ func (h *UserHandler) SendVerifyEmail(c *gin.Context) {
 }
 
 func (h *UserHandler) VerifyEmail(c *gin.Context) {
-	var req model.VerifyEmailRequest
+	var req dto.VerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -141,7 +141,7 @@ func (h *UserHandler) VerifyEmail(c *gin.Context) {
 }
 
 func (h *UserHandler) SendResetPassword(c *gin.Context) {
-	var req model.SendResetPasswordRequest
+	var req dto.SendResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -156,7 +156,7 @@ func (h *UserHandler) SendResetPassword(c *gin.Context) {
 }
 
 func (h *UserHandler) ResetPassword(c *gin.Context) {
-	var req model.ResetPasswordRequest
+	var req dto.ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -193,7 +193,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	var req model.UpdateUserRequest
+	var req dto.UpdateUserRequest
 	if err := c.ShouldBind(&req); err != nil {
 		bindError(c, err)
 		return
@@ -209,7 +209,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 }
 
 func (h *UserHandler) GetAllUsers(c *gin.Context) {
-	var req model.PaginationRequest
+	var req dto.PaginationRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		bindError(c, err)
 		return
@@ -244,7 +244,7 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 }
 
 func (h *UserHandler) CreateUser(c *gin.Context) {
-	var req model.CreateUserRequest
+	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -262,7 +262,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	userID := c.Param("id")
 
-	var req model.UpdateUserRequest
+	var req dto.UpdateUserRequest
 	if err := c.ShouldBind(&req); err != nil {
 		bindError(c, err)
 		return
@@ -284,7 +284,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	var req model.ChangePasswordRequest
+	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -301,7 +301,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 func (h *UserHandler) ChangeStatus(c *gin.Context) {
 	userID := c.Param("id")
 
-	var req model.ChangeUserStatusRequest
+	var req dto.ChangeUserStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return

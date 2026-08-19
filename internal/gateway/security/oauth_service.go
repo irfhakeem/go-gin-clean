@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"go-gin-clean/internal/dto"
 	"go-gin-clean/internal/entity"
-	"go-gin-clean/internal/model"
 	"go-gin-clean/pkg/config"
 )
 
@@ -251,7 +251,7 @@ func (s *OAuthService) buildTokenPayload(code, redirectURI string) url.Values {
 	return data
 }
 
-func (s *OAuthService) exchangeTokens(ctx context.Context, payload url.Values) (*model.TokenResponse, error) {
+func (s *OAuthService) exchangeTokens(ctx context.Context, payload url.Values) (*dto.TokenResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.googleConfig.TokenURL, strings.NewReader(payload.Encode()))
 	if err != nil {
 		return nil, err
@@ -272,7 +272,7 @@ func (s *OAuthService) exchangeTokens(ctx context.Context, payload url.Values) (
 		return nil, fmt.Errorf("token exchange failed with status %d: %s", resp.StatusCode, body)
 	}
 
-	var tokenResp model.TokenResponse
+	var tokenResp dto.TokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return nil, err
 	}
@@ -291,7 +291,7 @@ func (s *OAuthService) googleUserToEntity(ctx context.Context, accessToken strin
 	return user, nil
 }
 
-func (s *OAuthService) getGoogleUserData(ctx context.Context, accessToken string) (*model.GoogleUserData, error) {
+func (s *OAuthService) getGoogleUserData(ctx context.Context, accessToken string) (*dto.GoogleUserData, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.googleConfig.UserInfoURL, nil)
 	if err != nil {
 		return nil, err
@@ -312,7 +312,7 @@ func (s *OAuthService) getGoogleUserData(ctx context.Context, accessToken string
 		return nil, fmt.Errorf("failed to get user info with status %d: %s", resp.StatusCode, body)
 	}
 
-	var userData model.GoogleUserData
+	var userData dto.GoogleUserData
 	if err := json.Unmarshal(body, &userData); err != nil {
 		return nil, err
 	}

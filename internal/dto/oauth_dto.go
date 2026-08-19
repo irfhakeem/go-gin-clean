@@ -1,4 +1,4 @@
-package model
+package dto
 
 type GoogleUserData struct {
 	ID            string `json:"id"`

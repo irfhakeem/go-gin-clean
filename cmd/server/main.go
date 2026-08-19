@@ -10,7 +10,7 @@ import (
 
 	"go-gin-clean/internal"
 	"go-gin-clean/internal/delivery/http/route"
-	"go-gin-clean/internal/model/validator"
+	"go-gin-clean/internal/dto/validator"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/connection"
 	"go-gin-clean/pkg/logger"

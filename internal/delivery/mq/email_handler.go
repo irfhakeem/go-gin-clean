@@ -3,7 +3,7 @@ package mq
 import (
 	"context"
 	"encoding/json"
-	"go-gin-clean/internal/model/event"
+	"go-gin-clean/internal/dto/event"
 	"go-gin-clean/internal/usecase"
 )
 

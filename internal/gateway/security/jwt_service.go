@@ -3,8 +3,8 @@ package security
 import (
 	"time"
 
+	"go-gin-clean/internal/dto"
 	"go-gin-clean/internal/entity"
-	"go-gin-clean/internal/model"
 	"go-gin-clean/pkg/config"
 
 	pkgerror "go-gin-clean/pkg/error"
@@ -16,8 +16,8 @@ import (
 type JWTServiceInterface interface {
 	GenerateAccessToken(user *entity.User) (string, time.Time, error)
 	GenerateRefreshToken(userID string) (string, time.Time, error)
-	ValidateAccessToken(tokenString string) (*model.AccessTokenClaims, error)
-	ValidateRefreshToken(tokenString string) (*model.RefreshTokenClaims, error)
+	ValidateAccessToken(tokenString string) (*dto.AccessTokenClaims, error)
+	ValidateRefreshToken(tokenString string) (*dto.RefreshTokenClaims, error)
 }
 
 type JWTService struct {
@@ -79,7 +79,7 @@ func (j *JWTService) GenerateRefreshToken(userID string) (string, time.Time, err
 	return tokenString, expiryAt, nil
 }
 
-func (j *JWTService) ValidateAccessToken(tokenString string) (*model.AccessTokenClaims, error) {
+func (j *JWTService) ValidateAccessToken(tokenString string) (*dto.AccessTokenClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, pkgerror.ErrUnexpectedSigningMethod
@@ -141,7 +141,7 @@ func (j *JWTService) ValidateAccessToken(tokenString string) (*model.AccessToken
 		return nil, pkgerror.ErrInvalidClaims
 	}
 
-	return &model.AccessTokenClaims{
+	return &dto.AccessTokenClaims{
 		UserID:    parsedUUID,
 		UserRole:  userRole,
 		TokenType: tokenType,
@@ -153,7 +153,7 @@ func (j *JWTService) ValidateAccessToken(tokenString string) (*model.AccessToken
 	}, nil
 }
 
-func (j *JWTService) ValidateRefreshToken(tokenString string) (*model.RefreshTokenClaims, error) {
+func (j *JWTService) ValidateRefreshToken(tokenString string) (*dto.RefreshTokenClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, pkgerror.ErrUnexpectedSigningMethod
@@ -210,7 +210,7 @@ func (j *JWTService) ValidateRefreshToken(tokenString string) (*model.RefreshTok
 		return nil, pkgerror.ErrInvalidClaims
 	}
 
-	return &model.RefreshTokenClaims{
+	return &dto.RefreshTokenClaims{
 		UserID:    parsedUUID,
 		TokenType: tokenType,
 		ExpiresAt: time.Unix(int64(exp), 0),

@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"go-gin-clean/internal/dto"
+	"go-gin-clean/internal/dto/event"
 	"go-gin-clean/internal/entity"
 	"go-gin-clean/internal/gateway/cache"
 	"go-gin-clean/internal/gateway/media"
 	"go-gin-clean/internal/gateway/messaging"
 	"go-gin-clean/internal/gateway/security"
-	"go-gin-clean/internal/model"
-	"go-gin-clean/internal/model/event"
 	"go-gin-clean/internal/repository"
 	"go-gin-clean/pkg/config"
 	pkgerror "go-gin-clean/pkg/error"
@@ -24,23 +24,23 @@ import (
 )
 
 type UserUseCaseInterface interface {
-	Login(ctx context.Context, req *model.LoginRequest) (*model.LoginResponse, error)
-	Register(ctx context.Context, req *model.RegisterRequest) error
-	RefreshToken(ctx context.Context, hashedRefreshToken string) (*model.RefreshTokenResponse, error)
+	Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error)
+	Register(ctx context.Context, req *dto.RegisterRequest) error
+	RefreshToken(ctx context.Context, hashedRefreshToken string) (*dto.RefreshTokenResponse, error)
 	Logout(ctx context.Context, id string) error
-	SendVerifyEmail(ctx context.Context, req model.SendVerifyEmailRequest) error
+	SendVerifyEmail(ctx context.Context, req dto.SendVerifyEmailRequest) error
 	VerifyEmail(ctx context.Context, token string) error
-	SendResetPassword(ctx context.Context, req model.SendResetPasswordRequest) error
-	ResetPassword(ctx context.Context, req *model.ResetPasswordRequest) error
-	GetOAuthLoginURL(ctx context.Context, provider, appID, platform string) (*model.OAuthUrlResponse, error)
+	SendResetPassword(ctx context.Context, req dto.SendResetPasswordRequest) error
+	ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error
+	GetOAuthLoginURL(ctx context.Context, provider, appID, platform string) (*dto.OAuthUrlResponse, error)
 	GetOAuthRedirectURL(appID, platform string) string
-	HandleOAuthCallback(ctx context.Context, req *model.OAuthCallbackRequest) (*model.LoginResponse, string, string, error)
-	GetAllUsers(ctx context.Context, page, pageSize int, search string) (*model.PaginationResponse[model.UserInfo], error)
-	GetUserByID(ctx context.Context, id string) (*model.UserInfo, error)
-	CreateUser(ctx context.Context, req *model.CreateUserRequest) (*model.UserInfo, error)
-	UpdateUser(ctx context.Context, id string, req *model.UpdateUserRequest) (*model.UserInfo, error)
-	ChangePassword(ctx context.Context, userID string, req *model.ChangePasswordRequest) error
-	ChangeStatus(ctx context.Context, id string, req model.ChangeUserStatusRequest) error
+	HandleOAuthCallback(ctx context.Context, req *dto.OAuthCallbackRequest) (*dto.LoginResponse, string, string, error)
+	GetAllUsers(ctx context.Context, page, pageSize int, search string) (*dto.PaginationResponse[dto.UserInfo], error)
+	GetUserByID(ctx context.Context, id string) (*dto.UserInfo, error)
+	CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserInfo, error)
+	UpdateUser(ctx context.Context, id string, req *dto.UpdateUserRequest) (*dto.UserInfo, error)
+	ChangePassword(ctx context.Context, userID string, req *dto.ChangePasswordRequest) error
+	ChangeStatus(ctx context.Context, id string, req dto.ChangeUserStatusRequest) error
 	DeleteUser(ctx context.Context, id string) error
 }
 
@@ -92,10 +92,10 @@ func (u *UserUseCase) GetOAuthRedirectURL(appID, platform string) string {
 	return u.oauthService.GetFrontendURL(appID)
 }
 
-func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider, appID, platform string) (*model.OAuthUrlResponse, error) {
+func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider, appID, platform string) (*dto.OAuthUrlResponse, error) {
 	switch provider {
 	case "google":
-		return &model.OAuthUrlResponse{
+		return &dto.OAuthUrlResponse{
 			AuthURL: u.oauthService.GetGoogleAuthURL(appID, platform),
 		}, nil
 	default:
@@ -103,7 +103,7 @@ func (u *UserUseCase) GetOAuthLoginURL(ctx context.Context, provider, appID, pla
 	}
 }
 
-func (u *UserUseCase) HandleOAuthCallback(ctx context.Context, req *model.OAuthCallbackRequest) (*model.LoginResponse, string, string, error) {
+func (u *UserUseCase) HandleOAuthCallback(ctx context.Context, req *dto.OAuthCallbackRequest) (*dto.LoginResponse, string, string, error) {
 	var (
 		user     *entity.User
 		appID    string
@@ -159,10 +159,10 @@ func (u *UserUseCase) HandleOAuthCallback(ctx context.Context, req *model.OAuthC
 		return nil, appID, platform, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
-	return model.FormatLoginResponse(accessToken, hashedRefreshToken), appID, platform, nil
+	return dto.FormatLoginResponse(accessToken, hashedRefreshToken), appID, platform, nil
 }
 
-func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*model.LoginResponse, error) {
+func (u *UserUseCase) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error) {
 	user, err := u.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, err)
@@ -204,10 +204,10 @@ func (u *UserUseCase) Login(ctx context.Context, req *model.LoginRequest) (*mode
 		return nil, pkgerror.Unauthorized(pkgerror.ErrLoginFailed, err)
 	}
 
-	return model.FormatLoginResponse(accessToken, hashedRefreshToken), nil
+	return dto.FormatLoginResponse(accessToken, hashedRefreshToken), nil
 }
 
-func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) error {
+func (u *UserUseCase) Register(ctx context.Context, req *dto.RegisterRequest) error {
 	if exist := u.userRepo.ExistByEmail(ctx, req.Email); exist {
 		return pkgerror.BadRequest(pkgerror.ErrRegisterFailed, pkgerror.ErrEmailAlreadyExists)
 	}
@@ -248,7 +248,7 @@ func (u *UserUseCase) Register(ctx context.Context, req *model.RegisterRequest) 
 	return nil
 }
 
-func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken string) (*model.RefreshTokenResponse, error) {
+func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken string) (*dto.RefreshTokenResponse, error) {
 	refreshToken, err := u.aesService.DecryptInternal(hashedRefreshToken)
 	if err != nil {
 		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
@@ -292,7 +292,7 @@ func (u *UserUseCase) RefreshToken(ctx context.Context, hashedRefreshToken strin
 		return nil, pkgerror.Unauthorized(pkgerror.ErrRefreshToken, err)
 	}
 
-	return &model.RefreshTokenResponse{
+	return &dto.RefreshTokenResponse{
 		AccessToken:  newAccessToken,
 		RefreshToken: newRefreshToken,
 	}, nil
@@ -305,7 +305,7 @@ func (u *UserUseCase) Logout(ctx context.Context, id string) error {
 	return nil
 }
 
-func (u *UserUseCase) SendVerifyEmail(ctx context.Context, req model.SendVerifyEmailRequest) error {
+func (u *UserUseCase) SendVerifyEmail(ctx context.Context, req dto.SendVerifyEmailRequest) error {
 	user, err := u.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		return pkgerror.InternalServerError(pkgerror.ErrPrepareVerificationEmail, err)
@@ -364,7 +364,7 @@ func (u *UserUseCase) VerifyEmail(ctx context.Context, token string) error {
 	return nil
 }
 
-func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendResetPasswordRequest) error {
+func (u *UserUseCase) SendResetPassword(ctx context.Context, req dto.SendResetPasswordRequest) error {
 	user, err := u.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		return pkgerror.InternalServerError(pkgerror.ErrPrepareForgotPasswordEmail, err)
@@ -390,7 +390,7 @@ func (u *UserUseCase) SendResetPassword(ctx context.Context, req model.SendReset
 	return nil
 }
 
-func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswordRequest) error {
+func (u *UserUseCase) ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error {
 	decrypted, err := u.aesService.DecryptURLSafe(req.Token)
 	if err != nil {
 		return pkgerror.BadRequest(pkgerror.ErrResetPasswordFailed, err)
@@ -428,10 +428,10 @@ func (u *UserUseCase) ResetPassword(ctx context.Context, req *model.ResetPasswor
 	return nil
 }
 
-func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, search string) (*model.PaginationResponse[model.UserInfo], error) {
+func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, search string) (*dto.PaginationResponse[dto.UserInfo], error) {
 	cacheKey := fmt.Sprintf("users:all:page:%d:size:%d:search:%s", page, pageSize, search)
 
-	var cachedResult model.PaginationResponse[model.UserInfo]
+	var cachedResult dto.PaginationResponse[dto.UserInfo]
 	if err := u.redisService.Get(ctx, cacheKey, &cachedResult); err == nil {
 		return &cachedResult, nil
 	} else if !errors.Is(err, pkgerror.ErrCacheMiss) {
@@ -446,12 +446,12 @@ func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, searc
 		return nil, pkgerror.InternalServerError(pkgerror.ErrGetAllUsers, err)
 	}
 
-	userInfos := make([]model.UserInfo, len(users))
+	userInfos := make([]dto.UserInfo, len(users))
 	for i, user := range users {
-		userInfos[i] = *model.FormatUserInfo(user)
+		userInfos[i] = *dto.FormatUserInfo(user)
 	}
 
-	result := model.NewPaginationResponse(userInfos, page, pageSize, int(total))
+	result := dto.NewPaginationResponse(userInfos, page, pageSize, int(total))
 
 	if err := u.redisService.SetWithExpiration(ctx, cacheKey, result, 5*time.Minute); err != nil {
 		logger.Error("failed to cache result", zap.Error(err))
@@ -460,10 +460,10 @@ func (u *UserUseCase) GetAllUsers(ctx context.Context, page, pageSize int, searc
 	return result, nil
 }
 
-func (u *UserUseCase) GetUserByID(ctx context.Context, id string) (*model.UserInfo, error) {
+func (u *UserUseCase) GetUserByID(ctx context.Context, id string) (*dto.UserInfo, error) {
 	cacheKey := fmt.Sprintf("user:id:%s", id)
 
-	var cachedUser model.UserInfo
+	var cachedUser dto.UserInfo
 	if err := u.redisService.Get(ctx, cacheKey, &cachedUser); err == nil {
 		return &cachedUser, nil
 	} else if !errors.Is(err, pkgerror.ErrCacheMiss) {
@@ -478,7 +478,7 @@ func (u *UserUseCase) GetUserByID(ctx context.Context, id string) (*model.UserIn
 		return nil, pkgerror.NotFound(pkgerror.ErrUserNotFound, nil)
 	}
 
-	userInfo := model.FormatUserInfo(user)
+	userInfo := dto.FormatUserInfo(user)
 
 	if err := u.redisService.SetWithExpiration(ctx, cacheKey, userInfo, 5*time.Minute); err != nil {
 		logger.Error("failed to cache result", zap.Error(err))
@@ -487,7 +487,7 @@ func (u *UserUseCase) GetUserByID(ctx context.Context, id string) (*model.UserIn
 	return userInfo, nil
 }
 
-func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserRequest) (*model.UserInfo, error) {
+func (u *UserUseCase) CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserInfo, error) {
 	if u.userRepo.ExistByEmail(ctx, req.Email) {
 		return nil, pkgerror.BadRequest(pkgerror.ErrCreateUser, pkgerror.ErrEmailAlreadyExists)
 	}
@@ -511,10 +511,10 @@ func (u *UserUseCase) CreateUser(ctx context.Context, req *model.CreateUserReque
 		logger.Error("failed to invalidate users cache", zap.Error(err))
 	}
 
-	return model.FormatUserInfo(savedUser), nil
+	return dto.FormatUserInfo(savedUser), nil
 }
 
-func (u *UserUseCase) UpdateUser(ctx context.Context, id string, req *model.UpdateUserRequest) (*model.UserInfo, error) {
+func (u *UserUseCase) UpdateUser(ctx context.Context, id string, req *dto.UpdateUserRequest) (*dto.UserInfo, error) {
 	user, err := u.userRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, pkgerror.BadRequest(pkgerror.ErrUpdateUser, err)
@@ -561,10 +561,10 @@ func (u *UserUseCase) UpdateUser(ctx context.Context, id string, req *model.Upda
 		logger.Error("failed to invalidate users cache", zap.Error(err))
 	}
 
-	return model.FormatUserInfo(updatedUser), nil
+	return dto.FormatUserInfo(updatedUser), nil
 }
 
-func (u *UserUseCase) ChangePassword(ctx context.Context, userID string, req *model.ChangePasswordRequest) error {
+func (u *UserUseCase) ChangePassword(ctx context.Context, userID string, req *dto.ChangePasswordRequest) error {
 	user, err := u.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return pkgerror.BadRequest(pkgerror.ErrUpdateUserPassword, err)
@@ -587,7 +587,7 @@ func (u *UserUseCase) ChangePassword(ctx context.Context, userID string, req *mo
 	return nil
 }
 
-func (u *UserUseCase) ChangeStatus(ctx context.Context, id string, req model.ChangeUserStatusRequest) error {
+func (u *UserUseCase) ChangeStatus(ctx context.Context, id string, req dto.ChangeUserStatusRequest) error {
 	user, err := u.userRepo.FindByID(ctx, id)
 	if err != nil {
 		return pkgerror.InternalServerError(pkgerror.ErrUpdateUserStatus, err)

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"go-gin-clean/internal/model"
+	"go-gin-clean/internal/dto"
 	"go-gin-clean/internal/usecase"
 	pkgerror "go-gin-clean/pkg/error"
 	"go-gin-clean/pkg/response"
@@ -24,7 +24,7 @@ func NewOAuthHandler(userUseCase usecase.UserUseCaseInterface) *OAuthHandler {
 }
 
 func (h *OAuthHandler) GetLoginURL(c *gin.Context) {
-	var req model.OAuthLoginRequest
+	var req dto.OAuthLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		bindError(c, err)
 		return
@@ -53,7 +53,7 @@ func (h *OAuthHandler) CallBack(c *gin.Context) {
 		return
 	}
 
-	req := &model.OAuthCallbackRequest{
+	req := &dto.OAuthCallbackRequest{
 		Provider: provider,
 		Code:     code,
 		State:    state,
