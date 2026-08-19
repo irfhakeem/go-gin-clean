@@ -44,7 +44,7 @@ internal/
   repository/    database access
   gateway/       security, cache, storage, messaging, mailer
   entity/        domain models
-  model/         request/response DTOs
+  dto/           request/response DTOs
   worker/        background workers
 migrations/      SQL migrations
 pkg/             config, errors, logger, utils
