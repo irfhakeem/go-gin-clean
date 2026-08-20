@@ -9,6 +9,19 @@ const (
 	RoleUser  Role = "User"
 )
 
+func (r Role) IsValid() bool {
+	switch r {
+	case RoleAdmin, RoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r Role) String() string {
+	return string(r)
+}
+
 type Gender string
 
 const (
