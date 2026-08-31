@@ -5,19 +5,19 @@ import (
 	"net/http"
 	"net/url"
 
+	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/delivery/http/response"
 	"go-gin-clean/internal/dto"
-	"go-gin-clean/internal/usecase"
-	pkgerror "go-gin-clean/pkg/error"
-	"go-gin-clean/pkg/response"
+	"go-gin-clean/pkg/message"
 
 	"github.com/gin-gonic/gin"
 )
 
 type OAuthHandler struct {
-	userUseCase usecase.UserUseCaseInterface
+	userUseCase usecase.UserUseCase
 }
 
-func NewOAuthHandler(userUseCase usecase.UserUseCaseInterface) *OAuthHandler {
+func NewOAuthHandler(userUseCase usecase.UserUseCase) *OAuthHandler {
 	return &OAuthHandler{
 		userUseCase: userUseCase,
 	}
@@ -26,7 +26,7 @@ func NewOAuthHandler(userUseCase usecase.UserUseCaseInterface) *OAuthHandler {
 func (h *OAuthHandler) GetLoginURL(c *gin.Context) {
 	var req dto.OAuthLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -40,32 +40,25 @@ func (h *OAuthHandler) GetLoginURL(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.OAuthLoginSuccess, urlResp, http.StatusOK)
+	response.Success(c, message.OAuthLoginSuccess, urlResp, http.StatusOK)
 }
 
 func (h *OAuthHandler) CallBack(c *gin.Context) {
 	provider := c.Param("provider")
-	code := c.Query("code")
-	state := c.Query("state")
 
-	if code == "" || state == "" {
-		response.Error(c, pkgerror.BadRequest(pkgerror.ErrOAuthCallback, nil))
+	var query dto.OAuthCallbackRequest
+	if err := c.ShouldBindQuery(&query); err != nil {
+		response.ValidationError(c, err)
 		return
 	}
 
-	req := &dto.OAuthCallbackRequest{
-		Provider: provider,
-		Code:     code,
-		State:    state,
-	}
-
-	result, appID, platform, err := h.userUseCase.HandleOAuthCallback(c.Request.Context(), req)
+	result, appID, platform, err := h.userUseCase.HandleOAuthCallback(c.Request.Context(), provider, &query)
 	if err != nil {
 		reason := response.Reason(c, err)
 		if platform == "mobile" {
 			deepLink := h.userUseCase.GetOAuthRedirectURL(appID, "mobile")
 			if deepLink == "" {
-				response.Error(c, pkgerror.Unauthorized(pkgerror.ErrOAuthCallback, fmt.Errorf("%s", reason)))
+				response.Error(c, err)
 				return
 			}
 
@@ -85,7 +78,6 @@ func (h *OAuthHandler) CallBack(c *gin.Context) {
 	if platform == "mobile" {
 		deepLink := h.userUseCase.GetOAuthRedirectURL(appID, "mobile")
 		if deepLink == "" {
-			response.Error(c, pkgerror.InternalServerError(pkgerror.ErrOAuthCallback, nil))
 			return
 		}
 

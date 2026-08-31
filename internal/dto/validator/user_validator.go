@@ -1,10 +1,9 @@
 package validator
 
 import (
+	"go-gin-clean/internal/domain/vo"
 	"reflect"
 	"regexp"
-
-	"go-gin-clean/internal/entity"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -19,18 +18,14 @@ var (
 func validateGender(fl validator.FieldLevel) bool {
 	value := fl.Field()
 
-	if value.Kind() == reflect.Ptr {
+	if value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			return true
 		}
 		value = value.Elem()
 	}
 
-	if value.Type() != reflect.TypeOf(entity.Gender("")) {
-		return false
-	}
-
-	return value.Interface().(entity.Gender).IsValid()
+	return vo.IsValidGender(value.String())
 }
 
 func validatePassword(fl validator.FieldLevel) bool {

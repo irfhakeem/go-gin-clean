@@ -1,14 +1,18 @@
 package internal
 
 import (
+	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/application/usecase"
 	"go-gin-clean/internal/delivery/http"
-	"go-gin-clean/internal/gateway/cache"
-	"go-gin-clean/internal/gateway/mailer"
-	"go-gin-clean/internal/gateway/media"
-	"go-gin-clean/internal/gateway/messaging"
-	"go-gin-clean/internal/gateway/security"
-	"go-gin-clean/internal/repository"
-	"go-gin-clean/internal/usecase"
+	"go-gin-clean/internal/domain/permission"
+	"go-gin-clean/internal/domain/policy"
+	"go-gin-clean/internal/infrastructure/cache"
+	"go-gin-clean/internal/infrastructure/mailer"
+	"go-gin-clean/internal/infrastructure/messaging/rabbitmq"
+	"go-gin-clean/internal/infrastructure/oauth"
+	"go-gin-clean/internal/infrastructure/repository/postgres"
+	"go-gin-clean/internal/infrastructure/security"
+	"go-gin-clean/internal/infrastructure/storage"
 	"go-gin-clean/internal/worker"
 	"go-gin-clean/pkg/config"
 
@@ -18,32 +22,36 @@ import (
 )
 
 type App struct {
-	UserHandler      http.UserHandler
-	OauthHandler     http.OAuthHandler
-	JWTService       security.JWTServiceInterface
-	OAuthService     security.OAuthServiceInterface
-	PublisherService messaging.RabbitMQPublisherServiceInterface
-	OutboxWorker     *worker.OutboxWorker
-	ConsumerWorker   *worker.ConsumerWorker
+	Checker        permission.Checker
+	UserPolicy     policy.UserPolicy
+	Token          port.TokenMaker
+	Publisher      port.Publisher
+	UserHandler    *http.UserHandler
+	OauthHandler   *http.OAuthHandler
+	OutboxWorker   *worker.OutboxWorker
+	ConsumerWorker *worker.ConsumerWorker
 }
 
 func NewApp(db *gorm.DB, rabbitConn *amqp.Connection, redisClient *redis.Client, cfg *config.Config) *App {
-	userRepo := repository.NewUserRepository(db)
-	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
-	outboxRepo := repository.NewOutboxRepository(db)
+	checker := permission.NewChecker()
+	userPolicy := policy.NewUserPolicy()
 
-	jwtService := security.NewJWTService(&cfg.JWT)
-	bcryptService := security.NewBcryptService()
-	oauthService := security.NewOAuthService(&cfg.OAuth)
-	aesService := security.NewAESService(&cfg.AES)
-	redisService := cache.NewRedisService(redisClient, &cfg.Redis)
-	smtpService := mailer.NewSMTPService(&cfg.Email)
-	publisherService := messaging.NewRabbitMQPublisherService(rabbitConn, &cfg.RabbitMQ)
-	storageService := media.NewCloudinaryService(&cfg.Cloudinary)
+	jwt := security.NewJWTMaker(&cfg.JWT)
+	bcrypt := security.NewBcryptHasher()
+	aes := security.NewAESEncryptor(&cfg.AES)
+	oauthClient := oauth.NewGoogleOAuth(&cfg.OAuth)
+	redis := cache.NewRedisCache(redisClient, &cfg.Redis)
+	smtp := mailer.NewSMTPMailer(&cfg.Email)
+	rabbitMQ := rabbitmq.NewPublisher(rabbitConn, &cfg.RabbitMQ)
+	cloudinary := storage.NewCloudinaryStorage(&cfg.Cloudinary)
 
-	outboxUseCase := usecase.NewOutboxUseCase(outboxRepo, publisherService, &cfg.RabbitMQ)
-	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, outboxUseCase, jwtService, bcryptService, oauthService, aesService, storageService, redisService, &cfg.Server)
-	emailUseCase := usecase.NewEmailUseCase(smtpService, &cfg.Server)
+	userRepo := postgres.NewPostgresUserRepository(db)
+	refreshTokenRepo := postgres.NewPostgresRefreshTokenRepository(db)
+	outboxRepo := postgres.NewPostgresOutboxRepository(db)
+
+	outboxUseCase := usecase.NewOutboxUseCase(outboxRepo, rabbitMQ, &cfg.RabbitMQ)
+	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, outboxUseCase, jwt, bcrypt, oauthClient, aes, cloudinary, redis, &cfg.Server)
+	emailUseCase := usecase.NewEmailUseCase(smtp, &cfg.Server)
 
 	userHandler := http.NewUserHandler(userUseCase)
 	oauthHandler := http.NewOAuthHandler(userUseCase)
@@ -52,12 +60,13 @@ func NewApp(db *gorm.DB, rabbitConn *amqp.Connection, redisClient *redis.Client,
 	consumerWorker := worker.NewConsumerWorker(rabbitConn, emailUseCase, &cfg.RabbitMQ)
 
 	return &App{
-		UserHandler:      *userHandler,
-		OauthHandler:     *oauthHandler,
-		JWTService:       jwtService,
-		OAuthService:     oauthService,
-		PublisherService: publisherService,
-		OutboxWorker:     outboxWorker,
-		ConsumerWorker:   consumerWorker,
+		Checker:        checker,
+		UserPolicy:     userPolicy,
+		Token:          jwt,
+		Publisher:      rabbitMQ,
+		UserHandler:    userHandler,
+		OauthHandler:   oauthHandler,
+		OutboxWorker:   outboxWorker,
+		ConsumerWorker: consumerWorker,
 	}
 }

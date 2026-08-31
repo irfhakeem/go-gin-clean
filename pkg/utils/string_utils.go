@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 func SanitizeString(s string) string {
@@ -106,4 +108,8 @@ func ParseFrontendURLs(urlsStr string) map[string]string {
 	}
 
 	return frontendURLs
+}
+
+func ParseUUID(s string) (uuid.UUID, error) {
+	return uuid.Parse(s)
 }

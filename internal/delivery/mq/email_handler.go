@@ -3,36 +3,68 @@ package mq
 import (
 	"context"
 	"encoding/json"
-	"go-gin-clean/internal/dto/event"
-	"go-gin-clean/internal/usecase"
+	"errors"
+	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/domain/entity"
+	pkgerrors "go-gin-clean/pkg/errors"
+	"net/textproto"
 )
 
 type EmailEventHandler struct {
-	emailUsecase usecase.EmailUseCaseInterface
+	emailUsecase usecase.EmailUseCase
 }
 
-func NewEmailEventHandler(emailUsecase usecase.EmailUseCaseInterface) *EmailEventHandler {
+func NewEmailEventHandler(emailUsecase usecase.EmailUseCase) *EmailEventHandler {
 	return &EmailEventHandler{
 		emailUsecase: emailUsecase,
 	}
 }
 
 func (h *EmailEventHandler) HandleUserVerifyEmail(ctx context.Context, payload []byte) error {
-	var data event.RegisterEvent
+	var data entity.UserRegisterEvent
 
-	if err := json.Unmarshal(payload, &data); err != nil {
-		return NonRetryable(err)
+	if err := checkJSON(payload, &data); err != nil {
+		return err
 	}
 
-	return h.emailUsecase.SendVerifyEmail(data.Email, data.Name, data.VerificationURL)
+	err := h.emailUsecase.SendVerifyEmail(data.Email, data.Name, data.VerificationURL)
+	return checkSMTPError(err)
 }
 
 func (h *EmailEventHandler) HandleUserResetPasswordEmail(ctx context.Context, payload []byte) error {
-	var data event.ResetPasswordEvent
+	var data entity.UserResetPasswordEvent
 
-	if err := json.Unmarshal(payload, &data); err != nil {
-		return NonRetryable(err)
+	if err := checkJSON(payload, &data); err != nil {
+		return err
 	}
 
-	return h.emailUsecase.SendResetPasswordEmail(data.Email, data.Name, data.ResetURL)
+	err := h.emailUsecase.SendResetPasswordEmail(data.Email, data.Name, data.ResetURL)
+	return checkSMTPError(err)
+}
+
+func checkJSON(payload []byte, v any) error {
+	if err := json.Unmarshal(payload, v); err != nil {
+		return pkgerrors.NewConsumerError(
+			pkgerrors.NonRetryable,
+			err,
+		)
+	}
+	return nil
+}
+
+func checkSMTPError(err error) error {
+	var smtpErr *textproto.Error
+	if errors.As(err, &smtpErr) {
+		if smtpErr.Code >= 400 && smtpErr.Code < 500 {
+			return pkgerrors.NewConsumerError(
+				pkgerrors.Retryable,
+				err,
+			)
+		}
+	}
+
+	return pkgerrors.NewConsumerError(
+		pkgerrors.NonRetryable,
+		err,
+	)
 }

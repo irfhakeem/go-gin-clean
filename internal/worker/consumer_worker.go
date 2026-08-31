@@ -2,7 +2,8 @@ package worker
 
 import (
 	"context"
-	"go-gin-clean/internal/usecase"
+	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/infrastructure/messaging/rabbitmq"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
 
@@ -16,12 +17,12 @@ type ConsumerWorker struct {
 	conn        *amqp.Connection
 	reconnectCh chan *amqp.Connection
 
-	emailUsecase usecase.EmailUseCaseInterface
+	emailUsecase usecase.EmailUseCase
 
 	cfg *config.RabbitMQConfig
 }
 
-func NewConsumerWorker(conn *amqp.Connection, emailUsecase usecase.EmailUseCaseInterface, cfg *config.RabbitMQConfig) *ConsumerWorker {
+func NewConsumerWorker(conn *amqp.Connection, emailUsecase usecase.EmailUseCase, cfg *config.RabbitMQConfig) *ConsumerWorker {
 	return &ConsumerWorker{
 		cfg:          cfg,
 		conn:         conn,
@@ -54,7 +55,7 @@ func (w *ConsumerWorker) Run(ctx context.Context) {
 func (w *ConsumerWorker) engine(ctx context.Context) error {
 	emailHandler := mq.NewEmailEventHandler(w.emailUsecase)
 
-	consumer := mq.NewConsumer(w.conn, w.cfg.Exchange, map[string]mq.EventHandlerFunc{
+	consumer := rabbitmq.NewConsumer(w.conn, w.cfg.Exchange, map[string]rabbitmq.EventHandlerFunc{
 		"user.register":       emailHandler.HandleUserVerifyEmail,
 		"user.reset_password": emailHandler.HandleUserResetPasswordEmail,
 	})
@@ -63,7 +64,7 @@ func (w *ConsumerWorker) engine(ctx context.Context) error {
 		return err
 	}
 
-	for service := range mq.MainQueues {
+	for service := range rabbitmq.MainQueues {
 		if err := consumer.Consume(ctx, service); err != nil {
 			return err
 		}

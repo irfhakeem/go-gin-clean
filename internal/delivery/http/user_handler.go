@@ -3,37 +3,29 @@ package http
 import (
 	"net/http"
 
+	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/delivery/http/response"
 	"go-gin-clean/internal/dto"
-	"go-gin-clean/internal/dto/validator"
-	"go-gin-clean/internal/usecase"
-	pkgerror "go-gin-clean/pkg/error"
-	"go-gin-clean/pkg/response"
+	pkgerrors "go-gin-clean/pkg/errors"
+	"go-gin-clean/pkg/message"
 
 	"github.com/gin-gonic/gin"
 )
 
 type UserHandler struct {
-	userUseCase usecase.UserUseCaseInterface
+	userUseCase usecase.UserUseCase
 }
 
-func NewUserHandler(userUseCase usecase.UserUseCaseInterface) *UserHandler {
+func NewUserHandler(userUseCase usecase.UserUseCase) *UserHandler {
 	return &UserHandler{
 		userUseCase: userUseCase,
-	}
-}
-
-func bindError(c *gin.Context, err error) {
-	if errs, ok := validator.BuildValidationErrors(err); ok {
-		response.ValidationError(c, errs)
-	} else {
-		response.Error(c, pkgerror.BadRequest(pkgerror.ErrInvalidRequestBody, err))
 	}
 }
 
 func (h *UserHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -51,7 +43,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 		Path:     "/",
 	})
 
-	response.Success(c, pkgerror.LoginSuccess, gin.H{
+	response.Success(c, message.LoginSuccess, gin.H{
 		"access_token": result.AccessToken,
 	}, http.StatusOK)
 }
@@ -59,7 +51,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 func (h *UserHandler) Register(c *gin.Context) {
 	var req dto.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -68,13 +60,13 @@ func (h *UserHandler) Register(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.RegisterSuccess, nil, http.StatusCreated)
+	response.Success(c, message.RegisterSuccess, nil, http.StatusCreated)
 }
 
 func (h *UserHandler) RefreshToken(c *gin.Context) {
 	cookie, err := c.Cookie("refresh_token")
 	if err != nil {
-		response.Error(c, pkgerror.BadRequest(pkgerror.ErrTokenNotFound, err))
+		response.Error(c, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrTokenNotFound, err))
 		return
 	}
 
@@ -92,13 +84,13 @@ func (h *UserHandler) RefreshToken(c *gin.Context) {
 		Path:     "/",
 	})
 
-	response.Success(c, pkgerror.RefreshSuccess, result.AccessToken, http.StatusOK)
+	response.Success(c, message.RefreshSuccess, result.AccessToken, http.StatusOK)
 }
 
 func (h *UserHandler) Logout(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		response.Error(c, pkgerror.Unauthorized(pkgerror.ErrUnauthorized, nil))
+		response.Error(c, pkgerrors.NewAppError(pkgerrors.Unauthorized, message.ErrUnauthorized))
 		return
 	}
 
@@ -107,28 +99,28 @@ func (h *UserHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.LogoutSuccess, nil, http.StatusOK)
+	response.Success(c, message.LogoutSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) SendVerifyEmail(c *gin.Context) {
 	var req dto.SendVerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
-	if err := h.userUseCase.SendVerifyEmail(c.Request.Context(), req); err != nil {
+	if err := h.userUseCase.SendVerifyEmail(c.Request.Context(), &req); err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, pkgerror.SendVerificationEmailSuccess, nil, http.StatusOK)
+	response.Success(c, message.SendVerificationEmailSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) VerifyEmail(c *gin.Context) {
 	var req dto.VerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -137,28 +129,28 @@ func (h *UserHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.VerifyEmailSuccess, nil, http.StatusOK)
+	response.Success(c, message.VerifyEmailSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) SendResetPassword(c *gin.Context) {
 	var req dto.SendResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
-	if err := h.userUseCase.SendResetPassword(c.Request.Context(), req); err != nil {
+	if err := h.userUseCase.SendResetPassword(c.Request.Context(), &req); err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, pkgerror.SendResetPasswordEmailSuccess, nil, http.StatusOK)
+	response.Success(c, message.SendResetPasswordEmailSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) ResetPassword(c *gin.Context) {
 	var req dto.ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -167,13 +159,13 @@ func (h *UserHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.ResetPasswordSuccess, nil, http.StatusOK)
+	response.Success(c, message.ResetPasswordSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) Profile(c *gin.Context) {
 	userID, exist := c.Get("user_id")
 	if !exist {
-		response.Error(c, pkgerror.Unauthorized(pkgerror.ErrUnauthorized, nil))
+		response.Error(c, pkgerrors.NewAppError(pkgerrors.Unauthorized, message.ErrUnauthorized))
 		return
 	}
 
@@ -183,19 +175,19 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.GetUserInfoSuccess, result, http.StatusOK)
+	response.Success(c, message.GetUserInfoSuccess, result, http.StatusOK)
 }
 
 func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	userID, exist := c.Get("user_id")
 	if !exist {
-		response.Error(c, pkgerror.Unauthorized(pkgerror.ErrUnauthorized, nil))
+		response.Error(c, pkgerrors.NewAppError(pkgerrors.Unauthorized, message.ErrUnauthorized))
 		return
 	}
 
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBind(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -205,13 +197,13 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.UpdateUserSuccess, result, http.StatusOK)
+	response.Success(c, message.UpdateUserSuccess, result, http.StatusOK)
 }
 
 func (h *UserHandler) GetAllUsers(c *gin.Context) {
 	var req dto.PaginationRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -228,7 +220,7 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 		return
 	}
 
-	response.SuccessPagination(c, pkgerror.GetAllUsersSuccess, result.Data, response.SetMeta(req.Page, req.PerPage, result.Total, result.TotalPages))
+	response.SuccessPagination(c, message.GetAllUsersSuccess, result.Data, response.SetMeta(req.Page, req.PerPage, result.Total, result.TotalPages))
 }
 
 func (h *UserHandler) GetUserByID(c *gin.Context) {
@@ -240,13 +232,13 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.GetUserInfoSuccess, result, http.StatusOK)
+	response.Success(c, message.GetUserInfoSuccess, result, http.StatusOK)
 }
 
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -256,7 +248,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.CreateUserSuccess, result, http.StatusCreated)
+	response.Success(c, message.CreateUserSuccess, result, http.StatusCreated)
 }
 
 func (h *UserHandler) UpdateUser(c *gin.Context) {
@@ -264,7 +256,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBind(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -274,19 +266,19 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.UpdateUserSuccess, result, http.StatusOK)
+	response.Success(c, message.UpdateUserSuccess, result, http.StatusOK)
 }
 
 func (h *UserHandler) ChangePassword(c *gin.Context) {
 	userID, exist := c.Get("user_id")
 	if !exist {
-		response.Error(c, pkgerror.Unauthorized(pkgerror.ErrUnauthorized, nil))
+		response.Error(c, pkgerrors.NewAppError(pkgerrors.Unauthorized, message.ErrUnauthorized))
 		return
 	}
 
 	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
@@ -295,7 +287,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.ChangePasswordSuccess, nil, http.StatusOK)
+	response.Success(c, message.ChangePasswordSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) ChangeStatus(c *gin.Context) {
@@ -303,16 +295,16 @@ func (h *UserHandler) ChangeStatus(c *gin.Context) {
 
 	var req dto.ChangeUserStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		bindError(c, err)
+		response.ValidationError(c, err)
 		return
 	}
 
-	if err := h.userUseCase.ChangeStatus(c.Request.Context(), userID, req); err != nil {
+	if err := h.userUseCase.ChangeStatus(c.Request.Context(), userID, &req); err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, pkgerror.ChangeUserStatusSuccess, nil, http.StatusOK)
+	response.Success(c, message.ChangeUserStatusSuccess, nil, http.StatusOK)
 }
 
 func (h *UserHandler) DeleteUser(c *gin.Context) {
@@ -323,5 +315,5 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, pkgerror.DeleteUserSuccess, nil, http.StatusOK)
+	response.Success(c, message.DeleteUserSuccess, nil, http.StatusOK)
 }

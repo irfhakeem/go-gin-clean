@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"go-gin-clean/internal/usecase"
+	"go-gin-clean/internal/application/usecase"
 	"go-gin-clean/pkg/logger"
 
 	"go.uber.org/zap"
@@ -17,13 +17,13 @@ const (
 )
 
 type OutboxWorker struct {
-	outboxUseCase usecase.OutboxUseCaseInterface
+	outboxUseCase usecase.OutboxUseCase
 	batchSize     int
 	pollInterval  time.Duration
 	stuckTimeout  time.Duration
 }
 
-func NewOutboxWorker(outboxUseCase usecase.OutboxUseCaseInterface) *OutboxWorker {
+func NewOutboxWorker(outboxUseCase usecase.OutboxUseCase) *OutboxWorker {
 	return &OutboxWorker{
 		outboxUseCase: outboxUseCase,
 		batchSize:     defaultBatchSize,

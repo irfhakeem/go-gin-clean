@@ -6,9 +6,6 @@ import (
 	"reflect"
 	"strings"
 
-	pkgerror "go-gin-clean/pkg/error"
-	"go-gin-clean/pkg/response/message"
-
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
 )
@@ -100,9 +97,9 @@ func buildFieldErrorMessage(fe validator.FieldError) string {
 	case "alphanum":
 		return fmt.Sprintf("%s must contain only letters and numbers", fieldName)
 	case "password":
-		return message.Get(message.EN, pkgerror.ErrPasswordNotMeetsCriteria)
+		return fmt.Sprintf("%s does not meet password requirements", fieldName)
 	case "gender":
-		return message.Get(message.EN, pkgerror.ErrInvalidGender)
+		return fmt.Sprintf("%s must be a valid gender", fieldName)
 	default:
 		return fmt.Sprintf("%s is invalid", fieldName)
 	}

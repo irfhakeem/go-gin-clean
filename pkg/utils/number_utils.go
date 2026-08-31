@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"math/rand"
 	"strconv"
 	"time"
@@ -25,12 +24,4 @@ func GenerateNumber(len int, start int, end int) string {
 	}
 
 	return result
-}
-
-func ParseStrToID(idStr string) (string, error) {
-	// Validate UUID format
-	if len(idStr) == 0 {
-		return "", fmt.Errorf("invalid UUID: empty string")
-	}
-	return idStr, nil
 }

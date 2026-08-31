@@ -71,7 +71,7 @@ func main() {
 		defer wg.Done()
 		connection.WatchRabbitMQ(rootCtx, rabbitConn, &cfg.RabbitMQ, func(newConn *amqp.Connection) {
 			rabbitConn = newConn
-			if err := container.PublisherService.UpdateConnection(newConn); err != nil {
+			if err := container.Publisher.UpdateConnection(newConn); err != nil {
 				logger.Error("rabbitmq: failed to update publisher connection", zap.Error(err))
 			}
 			container.ConsumerWorker.Reconnect(newConn)
@@ -87,7 +87,7 @@ func main() {
 		logger.Fatal("failed to register custom validations", zap.Error(err))
 	}
 
-	route.SetupRoutes(router, &container.UserHandler, &container.OauthHandler, container.JWTService)
+	route.SetupRoutes(router, container.Token, container.Checker, container.UserHandler, container.OauthHandler)
 
 	srv := &http.Server{
 		Addr:    cfg.Server.Address(),
