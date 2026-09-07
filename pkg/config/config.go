@@ -108,7 +108,7 @@ func Load() (*Config, error) {
 			Timeout:     getEnvAsInt("TIMEOUT", 30),
 		},
 		Database: DatabaseConfig{
-			Url:          getEnv("DATABASE_URL", "postgres://user:password@localhost:5432/dbname?sslmode=disable"),
+			Url:          getEnv("DB_URL", "postgres://user:password@localhost:5432/dbname?sslmode=disable"),
 			MaxOpenConns: getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns: getEnvAsInt("DB_MAX_IDLE_CONNS", 5),
 			MaxLifetime:  getEnvAsDuration("DB_MAX_LIFETIME", 30*time.Minute),

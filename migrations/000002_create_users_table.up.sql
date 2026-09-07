@@ -7,7 +7,7 @@ CREATE TABLE users (
     password VARCHAR(255),
     avatar VARCHAR(255) DEFAULT '',
     gender gender DEFAULT NULL,
-    role role DEFAULT 'User',
+    role role DEFAULT 'user',
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     is_verified BOOLEAN DEFAULT FALSE NOT NULL,
     oauth_provider VARCHAR(50),
