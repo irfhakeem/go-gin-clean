@@ -2,8 +2,6 @@ package policy
 
 import (
 	"go-gin-clean/internal/domain/vo"
-
-	"github.com/google/uuid"
 )
 
 type UserPolicy interface {
@@ -21,25 +19,16 @@ func (p *userPolicy) Scope(actor Actor, action Action) Scope {
 	case vo.RoleSuperAdmin:
 		return FullAccess()
 	case vo.RoleUser:
-		return ActorScope(actor.ID)
-	default:
-		return NoAccess()
-	}
-}
-
-func userScope(actor Actor, action Action) Scope {
-	switch action {
-	case ActionRead:
-		return ActorScope(
-			uuid.Nil,
-			actor.ID,
-		)
-
-	case ActionUpdate:
-		return ActorScope(
-			actor.ID,
-		)
-
+		switch action {
+		case ActionRead:
+			return FilteredScope(actor.ID)
+		case ActionUpdate:
+			return FilteredScope(actor.ID)
+		case ActionDelete:
+			return FilteredScope(actor.ID)
+		default:
+			return NoAccess()
+		}
 	default:
 		return NoAccess()
 	}

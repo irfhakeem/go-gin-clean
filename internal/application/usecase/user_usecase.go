@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"slices"
 	"time"
 
 	"gorm.io/gorm"
 
 	"go-gin-clean/internal/application/port"
 	"go-gin-clean/internal/domain/entity"
+	"go-gin-clean/internal/domain/policy"
 	"go-gin-clean/internal/dto"
 	"go-gin-clean/pkg/config"
 	pkgerrors "go-gin-clean/pkg/errors"
@@ -19,415 +20,88 @@ import (
 	"go-gin-clean/pkg/utils"
 
 	"go.uber.org/zap"
+
+	"github.com/google/uuid"
 )
 
 type UserUseCase interface {
-	Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error)
-	Register(ctx context.Context, req *dto.RegisterRequest) error
-	RefreshToken(ctx context.Context, hashedRefreshToken string) (*dto.RefreshTokenResponse, error)
-	Logout(ctx context.Context, id string) error
-	SendVerifyEmail(ctx context.Context, req *dto.SendVerifyEmailRequest) error
-	VerifyEmail(ctx context.Context, token string) error
-	SendResetPassword(ctx context.Context, req *dto.SendResetPasswordRequest) error
-	ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error
-	GetOAuthLoginURL(ctx context.Context, provider, appID, platform string) (*dto.OAuthUrlResponse, error)
-	GetOAuthRedirectURL(appID, platform string) string
-	HandleOAuthCallback(ctx context.Context, provider string, req *dto.OAuthCallbackRequest) (*dto.LoginResponse, string, string, error)
-	GetAllUsers(ctx context.Context, page, pageSize int, search string) (*dto.PaginationResponse[dto.UserInfo], error)
-	GetUserByID(ctx context.Context, id string) (*dto.UserInfo, error)
-	CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserInfo, error)
-	UpdateUser(ctx context.Context, id string, req *dto.UpdateUserRequest) (*dto.UserInfo, error)
-	ChangePassword(ctx context.Context, userID string, req *dto.ChangePasswordRequest) error
-	ChangeStatus(ctx context.Context, id string, req *dto.ChangeUserStatusRequest) error
-	DeleteUser(ctx context.Context, id string) error
+	GetAllUsers(ctx context.Context, actor policy.Actor, query *dto.GetAllUserQuery, offset int) (*dto.PaginationResponse[dto.UserInfo], error)
+	GetUserByID(ctx context.Context, actor policy.Actor, id string) (*dto.UserInfo, error)
+	CreateUser(ctx context.Context, actor policy.Actor, req *dto.CreateUserRequest) (*dto.UserInfo, error)
+	UpdateUser(ctx context.Context, actor policy.Actor, id string, req *dto.UpdateUserRequest) (*dto.UserInfo, error)
+	ChangePassword(ctx context.Context, actor policy.Actor, userID string, req *dto.ChangePasswordRequest) error
+	ChangeStatus(ctx context.Context, actor policy.Actor, id string, req *dto.ChangeUserStatusRequest) error
+	DeleteUser(ctx context.Context, actor policy.Actor, id string) error
 }
 
 type userUseCase struct {
+	policy policy.UserPolicy
+
 	userRepo         port.UserRepository
 	refreshTokenRepo port.RefreshTokenRepository
 	outboxUseCase    OutboxUseCase
 
-	jwt       port.TokenMaker
-	hasher    port.Hasher
-	oauth     port.OAuthProvider
-	encryptor port.Encryptor
-	storage   port.Storage
-	cache     port.Cache
+	hasher  port.Hasher
+	storage port.Storage
+	cache   port.Cache
 
 	cfg *config.ServerConfig
 }
 
 func NewUserUseCase(
+	policy policy.UserPolicy,
 	userRepo port.UserRepository,
 	refreshTokenRepo port.RefreshTokenRepository,
 	outboxUseCase OutboxUseCase,
-	jwt port.TokenMaker,
 	hasher port.Hasher,
-	oauth port.OAuthProvider,
-	encryptor port.Encryptor,
 	storage port.Storage,
 	cache port.Cache,
 	cfg *config.ServerConfig,
 ) UserUseCase {
 	return &userUseCase{
+		policy:           policy,
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		outboxUseCase:    outboxUseCase,
-		jwt:              jwt,
 		hasher:           hasher,
-		oauth:            oauth,
-		encryptor:        encryptor,
 		storage:          storage,
 		cache:            cache,
 		cfg:              cfg,
 	}
 }
 
-func (u *userUseCase) GetOAuthRedirectURL(appID, platform string) string {
-	if platform == "mobile" {
-		return u.oauth.GetMobileDeepLinkURL(appID)
-	}
-	return u.oauth.GetFrontendURL(appID)
-}
-
-func (u *userUseCase) GetOAuthLoginURL(ctx context.Context, provider, appID, platform string) (*dto.OAuthUrlResponse, error) {
-	switch provider {
-	case "google":
-		return &dto.OAuthUrlResponse{
-			AuthURL: u.oauth.GetGoogleAuthURL(appID, platform),
-		}, nil
-	default:
-		return nil, pkgerrors.NewAppError(pkgerrors.Unprocessable, message.ErrInvalidOAuthProvider)
-	}
-}
-
-func (u *userUseCase) HandleOAuthCallback(ctx context.Context, provider string, req *dto.OAuthCallbackRequest) (*dto.LoginResponse, string, string, error) {
-	var (
-		user     *entity.User
-		appID    string
-		platform string
-		err      error
-	)
-
-	switch provider {
-	case "google":
-		user, appID, platform, err = u.oauth.HandleGoogleCallback(ctx, req.State, req.Code)
-		if err != nil {
-			return nil, appID, platform, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrOAuthCallback, err)
-		}
-	default:
-		return nil, appID, platform, pkgerrors.NewAppError(pkgerrors.Unprocessable, message.ErrInvalidOAuthProvider)
+func (u *userUseCase) checkAccess(actor policy.Actor, action policy.Action, targetID string) error {
+	scope := u.policy.Scope(actor, action)
+	if scope.Type == policy.ScopeNone {
+		return pkgerrors.NewAppError(pkgerrors.Forbidden, message.ErrForbidden)
 	}
 
-	existingUser, err := u.userRepo.FindByOAuthID(ctx, provider, user.OAuthID)
-	if err == nil {
-		user = existingUser
-	} else {
-		existingUserByEmail, err := u.userRepo.FindByEmail(ctx, user.Email)
-		if err == nil {
-			if err = u.userRepo.UpdateOAuthInfo(ctx, existingUserByEmail.ID.String(), provider, user.OAuthID); err != nil {
-				return nil, appID, platform, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrLinkOAuth, err)
-			}
-			user = existingUserByEmail
-		} else {
-			user, err = u.userRepo.Create(ctx, user)
-			if err != nil {
-				return nil, appID, platform, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrOAuthSignUp, err)
-			}
-		}
-	}
-
-	accessToken, _, err := u.jwt.GenerateAccessToken(user.ID, user.Role.String())
-	if err != nil {
-		return nil, appID, platform, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrAccessToken, err)
-	}
-
-	refreshToken, expiryAt, err := u.jwt.GenerateRefreshToken(user.ID)
-	if err != nil {
-		return nil, appID, platform, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRefreshToken, err)
-	}
-
-	hashedRefreshToken, err := u.encryptor.EncryptInternal(refreshToken)
-	if err != nil {
-		return nil, appID, platform, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrProcessToken, err)
-	}
-
-	tokenData := entity.NewRefreshToken(user.ID, hashedRefreshToken, expiryAt, false, user)
-	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, appID, platform, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRefreshToken, err)
-	}
-
-	return dto.FormatLoginResponse(accessToken, hashedRefreshToken), appID, platform, nil
-}
-
-func (u *userUseCase) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error) {
-	user, err := u.userRepo.FindByEmail(ctx, req.Email)
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrLoginFailed, err)
-	}
-
-	if user.IsOAuthUser() {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrLoginFailed, pkgerrors.NewAppError(pkgerrors.Unauthorized, message.ErrOAuthUserUseOAuthLogin))
-	}
-
-	if !user.IsActive {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrLoginFailed, pkgerrors.NewAppError(pkgerrors.NotFound, message.ErrUserNotFound))
-	}
-
-	if !user.IsVerified {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrLoginFailed, pkgerrors.NewAppError(pkgerrors.Unauthorized, message.ErrEmailNotVerified))
-	}
-
-	if err := u.hasher.ValidatePassword(req.Password, user.Password); err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrLoginFailed, pkgerrors.NewAppError(pkgerrors.Unauthorized, message.ErrPasswordNotMatch))
-	}
-
-	accessToken, _, err := u.jwt.GenerateAccessToken(user.ID, user.Role.String())
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrLoginFailed, err)
-	}
-
-	refreshToken, expiryAt, err := u.jwt.GenerateRefreshToken(user.ID)
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrLoginFailed, err)
-	}
-
-	hashedRefreshToken, err := u.encryptor.EncryptInternal(refreshToken)
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrLoginFailed, err)
-	}
-
-	tokenData := entity.NewRefreshToken(user.ID, hashedRefreshToken, expiryAt, false, user)
-	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrLoginFailed, err)
-	}
-
-	return dto.FormatLoginResponse(accessToken, hashedRefreshToken), nil
-}
-
-func (u *userUseCase) Register(ctx context.Context, req *dto.RegisterRequest) error {
-	if exist := u.userRepo.ExistByEmail(ctx, req.Email); exist {
-		return pkgerrors.WrapAppError(pkgerrors.Conflict, message.ErrRegisterFailed, pkgerrors.NewAppError(pkgerrors.Conflict, message.ErrEmailAlreadyExists))
-	}
-
-	hashedPassword, err := u.hasher.HashPassword(req.Password)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRegisterFailed, err)
-	}
-
-	userData, err := entity.NewUser(req.Name, req.Email, hashedPassword)
-	if err != nil || userData == nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrRegisterFailed, err)
-	}
-
-	savedUser, err := u.userRepo.Create(ctx, userData)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRegisterFailed, err)
-	}
-
-	plainText := fmt.Sprintf("%s_%s", savedUser.ID.String(), time.Now().Add(24*time.Hour).Format(time.RFC3339))
-	token, err := u.encryptor.EncryptURLSafe(plainText)
-	if err != nil {
-		logger.Error("failed to prepare verification email", zap.Error(err))
+	if scope.Type == policy.ScopeAll {
 		return nil
 	}
 
-	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", u.cfg.AppUrl, token)
-	message := entity.UserRegisterEvent{
-		UserEvent:       entity.UserEvent{UserID: savedUser.ID, Name: savedUser.Name},
-		Email:           savedUser.Email,
-		VerificationURL: verificationURL,
+	targetUUID, err := uuid.Parse(targetID)
+	if err != nil {
+		return pkgerrors.NewAppError(pkgerrors.NotFound, message.ErrUserNotFound)
 	}
 
-	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", savedUser.ID.String(), entity.EventUserRegistered, message); err != nil {
-		logger.Error("failed to save outbox message for register event", zap.Error(err))
+	if !slices.Contains(scope.UserIDs, targetUUID) {
+		return pkgerrors.NewAppError(pkgerrors.Forbidden, message.ErrForbidden)
 	}
 
 	return nil
 }
 
-func (u *userUseCase) RefreshToken(ctx context.Context, hashedRefreshToken string) (*dto.RefreshTokenResponse, error) {
-	refreshToken, err := u.encryptor.DecryptInternal(hashedRefreshToken)
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrRefreshToken, err)
+func (u *userUseCase) GetAllUsers(ctx context.Context, actor policy.Actor, query *dto.GetAllUserQuery, offset int) (*dto.PaginationResponse[dto.UserInfo], error) {
+	limit := query.PerPage
+	page := query.Page
+
+	scope := u.policy.Scope(actor, policy.ActionRead)
+	if scope.Type == policy.ScopeNone {
+		return nil, pkgerrors.NewAppError(pkgerrors.Forbidden, message.ErrForbidden)
 	}
 
-	claims, err := u.jwt.ValidateRefreshToken(refreshToken)
-	if err != nil {
-		return nil, pkgerrors.AsAppError(pkgerrors.Unauthorized, message.ErrRefreshToken, err)
-	}
-
-	if !u.refreshTokenRepo.IsTokenValid(ctx, refreshToken) {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrRefreshToken, pkgerrors.NewAppError(pkgerrors.Unauthorized, message.ErrTokenInvalid))
-	}
-
-	user, err := u.userRepo.FindByID(ctx, claims.UserID.String())
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Unauthorized, message.ErrRefreshToken, err)
-	}
-
-	newAccessToken, _, err := u.jwt.GenerateAccessToken(user.ID, user.Role.String())
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRefreshToken, err)
-	}
-
-	newRefreshToken, expiryAt, err := u.jwt.GenerateRefreshToken(user.ID)
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRefreshToken, err)
-	}
-
-	if err := u.refreshTokenRepo.RevokeByToken(ctx, refreshToken); err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRefreshToken, err)
-	}
-
-	newHashedRefreshToken, err := u.encryptor.EncryptInternal(newRefreshToken)
-	if err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRefreshToken, err)
-	}
-
-	tokenData := entity.NewRefreshToken(user.ID, newHashedRefreshToken, expiryAt, false, user)
-	if err := u.refreshTokenRepo.Save(ctx, tokenData); err != nil {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrRefreshToken, err)
-	}
-
-	return &dto.RefreshTokenResponse{
-		AccessToken:  newAccessToken,
-		RefreshToken: newRefreshToken,
-	}, nil
-}
-
-func (u *userUseCase) Logout(ctx context.Context, id string) error {
-	if err := u.refreshTokenRepo.RevokeAllByUserID(ctx, id); err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrLogoutFailed, err)
-	}
-	return nil
-}
-
-func (u *userUseCase) SendVerifyEmail(ctx context.Context, req *dto.SendVerifyEmailRequest) error {
-	user, err := u.userRepo.FindByEmail(ctx, req.Email)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrPrepareVerificationEmail, err)
-	}
-
-	plainText := fmt.Sprintf("%s_%s", user.ID.String(), time.Now().Add(24*time.Hour).Format(time.RFC3339))
-	token, err := u.encryptor.EncryptURLSafe(plainText)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrPrepareVerificationEmail, err)
-	}
-
-	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", u.cfg.AppUrl, token)
-	message := entity.UserRegisterEvent{
-		UserEvent:       entity.UserEvent{UserID: user.ID, Name: user.Name},
-		Email:           user.Email,
-		VerificationURL: verificationURL,
-	}
-
-	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", user.ID.String(), entity.EventUserRegistered, message); err != nil {
-		logger.Error("failed to save outbox message for verify email event", zap.Error(err))
-	}
-
-	return nil
-}
-
-func (u *userUseCase) VerifyEmail(ctx context.Context, token string) error {
-	decrypted, err := u.encryptor.DecryptURLSafe(token)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrVerifyEmailFailed, err)
-	}
-
-	payload := strings.Split(decrypted, "_")
-	if len(payload) != 2 {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrVerifyEmailFailed, pkgerrors.NewAppError(pkgerrors.BadRequest, message.ErrTokenInvalid))
-	}
-
-	expiryTime, err := time.Parse(time.RFC3339, payload[1])
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrVerifyEmailFailed, err)
-	}
-
-	if time.Now().After(expiryTime) {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrVerifyEmailFailed, pkgerrors.NewAppError(pkgerrors.BadRequest, message.ErrTokenExpired))
-	}
-
-	user, err := u.userRepo.FindByID(ctx, payload[0])
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrVerifyEmailFailed, err)
-	}
-
-	user.VerifyEmail()
-	if _, err = u.userRepo.Update(ctx, user); err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrVerifyEmailFailed, err)
-	}
-
-	return nil
-}
-
-func (u *userUseCase) SendResetPassword(ctx context.Context, req *dto.SendResetPasswordRequest) error {
-	user, err := u.userRepo.FindByEmail(ctx, req.Email)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrPrepareForgotPasswordEmail, err)
-	}
-
-	plainText := fmt.Sprintf("%s_%s", user.Email, time.Now().Add(1*time.Hour).Format(time.RFC3339))
-	token, err := u.encryptor.EncryptURLSafe(plainText)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrPrepareForgotPasswordEmail, err)
-	}
-
-	resetURL := fmt.Sprintf("%s/reset-password?token=%s", u.cfg.AppUrl, token)
-	message := entity.UserResetPasswordEvent{
-		UserEvent: entity.UserEvent{UserID: user.ID, Name: user.Name},
-		Email:     user.Email,
-		ResetURL:  resetURL,
-	}
-
-	if err := u.outboxUseCase.SaveOutboxMessage(ctx, "user", user.ID.String(), entity.EventUserResetPassword, message); err != nil {
-		logger.Error("failed to save outbox message for reset password event", zap.Error(err))
-	}
-
-	return nil
-}
-
-func (u *userUseCase) ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error {
-	decrypted, err := u.encryptor.DecryptURLSafe(req.Token)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrResetPasswordFailed, err)
-	}
-
-	payload := strings.Split(decrypted, "_")
-	if len(payload) != 2 {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrResetPasswordFailed, pkgerrors.NewAppError(pkgerrors.BadRequest, message.ErrTokenInvalid))
-	}
-
-	expiryTime, err := time.Parse(time.RFC3339, payload[1])
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrResetPasswordFailed, err)
-	}
-
-	if time.Now().After(expiryTime) {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrResetPasswordFailed, pkgerrors.NewAppError(pkgerrors.BadRequest, message.ErrTokenExpired))
-	}
-
-	user, err := u.userRepo.FindByEmail(ctx, payload[0])
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrResetPasswordFailed, err)
-	}
-
-	hashedPassword, err := u.hasher.HashPassword(req.NewPassword)
-	if err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrResetPasswordFailed, err)
-	}
-
-	user.SetPassword(hashedPassword)
-	if _, err = u.userRepo.Update(ctx, user); err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrResetPasswordFailed, err)
-	}
-
-	return nil
-}
-
-func (u *userUseCase) GetAllUsers(ctx context.Context, page, pageSize int, search string) (*dto.PaginationResponse[dto.UserInfo], error) {
-	cacheKey := fmt.Sprintf("users:all:page:%d:size:%d:search:%s", page, pageSize, search)
+	cacheKey := fmt.Sprintf("users:all:%s:%s:page:%d:size:%d:search:%s:role:%s", actor.Role, actor.ID, page, limit, query.Search, query.Role)
 
 	var cachedResult dto.PaginationResponse[dto.UserInfo]
 	if err := u.cache.Get(ctx, cacheKey, &cachedResult); err == nil {
@@ -436,10 +110,25 @@ func (u *userUseCase) GetAllUsers(ctx context.Context, page, pageSize int, searc
 		logger.Error("cache error", zap.String("key", cacheKey), zap.Error(err))
 	}
 
-	limit := pageSize
-	offset := (page - 1) * pageSize
+	if scope.Type == policy.ScopeFiltered && len(scope.UserIDs) == 0 {
+		return dto.NewPaginationResponse([]dto.UserInfo{}, page, limit, 0), nil
+	}
 
-	users, total, err := u.userRepo.FindAll(ctx, limit, offset, search)
+	params := port.FindAllUsersParams{
+		Limit:    query.PerPage,
+		Offset:   offset,
+		Search:   query.Search,
+		SortBy:   query.SortBy,
+		Sort:     query.Sort,
+		Role:     query.Role,
+		IsActive: query.IsActive,
+	}
+
+	if scope.Type == policy.ScopeFiltered {
+		params.IDs = scope.UserIDs
+	}
+
+	users, total, err := u.userRepo.FindAll(ctx, params)
 	if err != nil {
 		return nil, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrGetAllUsers, err)
 	}
@@ -449,7 +138,7 @@ func (u *userUseCase) GetAllUsers(ctx context.Context, page, pageSize int, searc
 		userInfos[i] = *dto.FormatUserInfo(user)
 	}
 
-	result := dto.NewPaginationResponse(userInfos, page, pageSize, int(total))
+	result := dto.NewPaginationResponse(userInfos, page, limit, int(total))
 
 	if err := u.cache.SetWithExpiration(ctx, cacheKey, result, 5*time.Minute); err != nil {
 		logger.Error("failed to cache result", zap.Error(err))
@@ -458,7 +147,11 @@ func (u *userUseCase) GetAllUsers(ctx context.Context, page, pageSize int, searc
 	return result, nil
 }
 
-func (u *userUseCase) GetUserByID(ctx context.Context, id string) (*dto.UserInfo, error) {
+func (u *userUseCase) GetUserByID(ctx context.Context, actor policy.Actor, id string) (*dto.UserInfo, error) {
+	if err := u.checkAccess(actor, policy.ActionRead, id); err != nil {
+		return nil, err
+	}
+
 	cacheKey := fmt.Sprintf("user:id:%s", id)
 
 	var cachedUser dto.UserInfo
@@ -489,7 +182,12 @@ func (u *userUseCase) GetUserByID(ctx context.Context, id string) (*dto.UserInfo
 	return userInfo, nil
 }
 
-func (u *userUseCase) CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserInfo, error) {
+func (u *userUseCase) CreateUser(ctx context.Context, actor policy.Actor, req *dto.CreateUserRequest) (*dto.UserInfo, error) {
+	scope := u.policy.Scope(actor, policy.ActionCreate)
+	if scope.Type == policy.ScopeNone {
+		return nil, pkgerrors.NewAppError(pkgerrors.Forbidden, message.ErrForbidden)
+	}
+
 	if u.userRepo.ExistByEmail(ctx, req.Email) {
 		return nil, pkgerrors.WrapAppError(pkgerrors.Conflict, message.ErrCreateUser, pkgerrors.NewAppError(pkgerrors.Conflict, message.ErrEmailAlreadyExists))
 	}
@@ -516,7 +214,11 @@ func (u *userUseCase) CreateUser(ctx context.Context, req *dto.CreateUserRequest
 	return dto.FormatUserInfo(savedUser), nil
 }
 
-func (u *userUseCase) UpdateUser(ctx context.Context, id string, req *dto.UpdateUserRequest) (*dto.UserInfo, error) {
+func (u *userUseCase) UpdateUser(ctx context.Context, actor policy.Actor, id string, req *dto.UpdateUserRequest) (*dto.UserInfo, error) {
+	if err := u.checkAccess(actor, policy.ActionUpdate, id); err != nil {
+		return nil, err
+	}
+
 	user, err := u.userRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -569,7 +271,11 @@ func (u *userUseCase) UpdateUser(ctx context.Context, id string, req *dto.Update
 	return dto.FormatUserInfo(updatedUser), nil
 }
 
-func (u *userUseCase) ChangePassword(ctx context.Context, userID string, req *dto.ChangePasswordRequest) error {
+func (u *userUseCase) ChangePassword(ctx context.Context, actor policy.Actor, userID string, req *dto.ChangePasswordRequest) error {
+	if err := u.checkAccess(actor, policy.ActionUpdate, userID); err != nil {
+		return err
+	}
+
 	user, err := u.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -595,7 +301,11 @@ func (u *userUseCase) ChangePassword(ctx context.Context, userID string, req *dt
 	return nil
 }
 
-func (u *userUseCase) ChangeStatus(ctx context.Context, id string, req *dto.ChangeUserStatusRequest) error {
+func (u *userUseCase) ChangeStatus(ctx context.Context, actor policy.Actor, id string, req *dto.ChangeUserStatusRequest) error {
+	if err := u.checkAccess(actor, policy.ActionUpdate, id); err != nil {
+		return err
+	}
+
 	user, err := u.userRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -620,7 +330,11 @@ func (u *userUseCase) ChangeStatus(ctx context.Context, id string, req *dto.Chan
 	return nil
 }
 
-func (u *userUseCase) DeleteUser(ctx context.Context, id string) error {
+func (u *userUseCase) DeleteUser(ctx context.Context, actor policy.Actor, id string) error {
+	if err := u.checkAccess(actor, policy.ActionDelete, id); err != nil {
+		return err
+	}
+
 	user, err := u.userRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

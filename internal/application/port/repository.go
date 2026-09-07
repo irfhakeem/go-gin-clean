@@ -5,10 +5,27 @@ import (
 	"time"
 
 	"go-gin-clean/internal/domain/entity"
+
+	"github.com/google/uuid"
 )
 
+type UserFilter struct {
+	IDs []uuid.UUID
+}
+
+type FindAllUsersParams struct {
+	UserFilter
+	Limit    int
+	Offset   int
+	Search   string
+	SortBy   string
+	Sort     string
+	Role     string
+	IsActive *bool
+}
+
 type UserRepository interface {
-	FindAll(ctx context.Context, limit, offset int, search string) ([]*entity.User, int64, error)
+	FindAll(ctx context.Context, params FindAllUsersParams) ([]*entity.User, int64, error)
 	FindByID(ctx context.Context, id string) (*entity.User, error)
 	FindByEmail(ctx context.Context, email string) (*entity.User, error)
 	FindByOAuthID(ctx context.Context, provider, oauthID string) (*entity.User, error)

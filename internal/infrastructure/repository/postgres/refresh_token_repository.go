@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"go-gin-clean/internal/application/port"
 	"go-gin-clean/internal/domain/entity"
 
 	"gorm.io/gorm"
@@ -14,7 +15,7 @@ type PostgresRefreshTokenRepository struct {
 	baseRepo *BaseRepository[entity.RefreshToken]
 }
 
-func NewPostgresRefreshTokenRepository(db *gorm.DB) *PostgresRefreshTokenRepository {
+func NewPostgresRefreshTokenRepository(db *gorm.DB) port.RefreshTokenRepository {
 	return &PostgresRefreshTokenRepository{
 		db:       db,
 		baseRepo: NewBaseRepository[entity.RefreshToken](db),

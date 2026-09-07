@@ -23,11 +23,10 @@ import (
 
 type App struct {
 	Checker        permission.Checker
-	UserPolicy     policy.UserPolicy
 	Token          port.TokenMaker
 	Publisher      port.Publisher
 	UserHandler    *http.UserHandler
-	OauthHandler   *http.OAuthHandler
+	AuthHandler    *http.AuthHandler
 	OutboxWorker   *worker.OutboxWorker
 	ConsumerWorker *worker.ConsumerWorker
 }
@@ -50,22 +49,22 @@ func NewApp(db *gorm.DB, rabbitConn *amqp.Connection, redisClient *redis.Client,
 	outboxRepo := postgres.NewPostgresOutboxRepository(db)
 
 	outboxUseCase := usecase.NewOutboxUseCase(outboxRepo, rabbitMQ, &cfg.RabbitMQ)
-	userUseCase := usecase.NewUserUseCase(userRepo, refreshTokenRepo, outboxUseCase, jwt, bcrypt, oauthClient, aes, cloudinary, redis, &cfg.Server)
+	authUseCase := usecase.NewAuthUseCase(userRepo, refreshTokenRepo, outboxUseCase, jwt, bcrypt, oauthClient, aes, &cfg.Server)
+	userUseCase := usecase.NewUserUseCase(userPolicy, userRepo, refreshTokenRepo, outboxUseCase, bcrypt, cloudinary, redis, &cfg.Server)
 	emailUseCase := usecase.NewEmailUseCase(smtp, &cfg.Server)
 
+	authHandler := http.NewAuthHandler(authUseCase)
 	userHandler := http.NewUserHandler(userUseCase)
-	oauthHandler := http.NewOAuthHandler(userUseCase)
 
 	outboxWorker := worker.NewOutboxWorker(outboxUseCase)
 	consumerWorker := worker.NewConsumerWorker(rabbitConn, emailUseCase, &cfg.RabbitMQ)
 
 	return &App{
 		Checker:        checker,
-		UserPolicy:     userPolicy,
 		Token:          jwt,
 		Publisher:      rabbitMQ,
+		AuthHandler:    authHandler,
 		UserHandler:    userHandler,
-		OauthHandler:   oauthHandler,
 		OutboxWorker:   outboxWorker,
 		ConsumerWorker: consumerWorker,
 	}

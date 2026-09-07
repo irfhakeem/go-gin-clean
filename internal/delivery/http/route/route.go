@@ -1,20 +1,20 @@
 package route
 
 import (
+	"github.com/gin-gonic/gin"
+
 	"go-gin-clean/internal/application/port"
 	"go-gin-clean/internal/delivery/http"
 	"go-gin-clean/internal/delivery/http/middleware"
 	"go-gin-clean/internal/domain/permission"
-
-	"github.com/gin-gonic/gin"
 )
 
 func SetupRoutes(
 	router *gin.Engine,
 	token port.TokenMaker,
 	checker permission.Checker,
+	auth *http.AuthHandler,
 	user *http.UserHandler,
-	oauth *http.OAuthHandler,
 ) {
 	authMiddleware := middleware.NewAuthMiddleware(token)
 
@@ -22,21 +22,21 @@ func SetupRoutes(
 
 	api := router.Group("/api/v1")
 	{
-		auth := api.Group("/auth")
+		authGroup := api.Group("/auth")
 		{
-			auth.POST("/login", user.Login)
-			auth.POST("/register", user.Register)
-			auth.POST("/refresh-token", user.RefreshToken)
-			auth.POST("/verify-email", user.VerifyEmail)
-			auth.POST("/reset-password", user.ResetPassword)
-			auth.POST("/send-reset-password", user.SendResetPassword)
-			auth.POST("/resend-verification", user.SendVerifyEmail)
+			authGroup.POST("/login", auth.Login)
+			authGroup.POST("/register", auth.Register)
+			authGroup.POST("/refresh-token", auth.RefreshToken)
+			authGroup.POST("/verify-email", auth.VerifyEmail)
+			authGroup.POST("/reset-password", auth.ResetPassword)
+			authGroup.POST("/send-reset-password", auth.SendResetPassword)
+			authGroup.POST("/resend-verification", auth.SendVerifyEmail)
 		}
 
-		oauth2 := auth.Group("/oauth2")
+		oauth2 := authGroup.Group("/oauth2")
 		{
-			oauth2.POST("/url", oauth.GetLoginURL)
-			oauth2.GET("/:provider/callback", oauth.CallBack)
+			oauth2.POST("/url", auth.GetOAuthLoginURL)
+			oauth2.GET("/:provider/callback", auth.HandleOAuthCallback)
 		}
 
 		profile := api.Group("/profile")
@@ -45,7 +45,7 @@ func SetupRoutes(
 			profile.GET("", user.Profile)
 			profile.PUT("", user.UpdateProfile)
 			profile.PUT("/change-password", user.ChangePassword)
-			profile.POST("/logout", user.Logout)
+			profile.POST("/logout", auth.Logout)
 		}
 
 		users := api.Group("/users")

@@ -5,6 +5,7 @@ import (
 
 	"go-gin-clean/internal/application/port"
 	"go-gin-clean/internal/delivery/http/response"
+	"go-gin-clean/internal/domain/policy"
 	pkgerrors "go-gin-clean/pkg/errors"
 	"go-gin-clean/pkg/message"
 
@@ -50,8 +51,16 @@ func (m *AuthMiddleware) RequireAuth() gin.HandlerFunc {
 			return
 		}
 
+		actor, err := policy.NewActor(claims.UserID.String(), claims.UserRole)
+		if err != nil {
+			response.Error(c, pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrInvalidClaims, err))
+			c.Abort()
+			return
+		}
+
 		c.Set("user_id", claims.UserID.String())
 		c.Set("user_role", claims.UserRole)
+		c.Set("actor", actor)
 
 		c.Next()
 	}

@@ -40,6 +40,8 @@ func RequireRole(checker permission.Checker,
 			return
 		}
 
+		c.Set("actor", actor)
+
 		c.Next()
 	}
 }

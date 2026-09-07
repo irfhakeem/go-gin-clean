@@ -27,7 +27,7 @@ func FullAccess() Scope {
 	}
 }
 
-func ActorScope(ids ...uuid.UUID) Scope {
+func FilteredScope(ids ...uuid.UUID) Scope {
 	return Scope{
 		Type:    ScopeFiltered,
 		UserIDs: ids,

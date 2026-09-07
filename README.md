@@ -24,23 +24,24 @@
 </p>
 
 <p align="center">
-  <a href="#-features">Features</a> &nbsp;•&nbsp; <a href="#-system-design">System Design</a> &nbsp;•&nbsp;
-  <a href="#-getting-started">Getting Started</a> &nbsp;•&nbsp; <a href="#-api">API</a> &nbsp;•&nbsp;
-  <a href="#-deployment">Deployment</a> &nbsp;•&nbsp; <a href="#-contributing">Contributing</a>
+  <a href="#-features">Features</a> &nbsp;•&nbsp;
+  <a href="#-getting-started">Getting Started</a> &nbsp;•&nbsp;
+  <a href="#-system-design">System Design</a> &nbsp;•&nbsp;
+  <a href="#-api">API</a> &nbsp;•&nbsp;
+  <a href="#-deployment">Deployment</a> &nbsp;•&nbsp;
+  <a href="#-contributing">Contributing</a>
 </p>
 
 ---
 
-> **Notice:** RBAC (role-based access control) is **still under development**.
-> The permission/policy domain packages and the `RequireRole` middleware exist
-> and are wired into the `/users` routes, but the permission matrix is not
-> finalized — treat role/permission behavior as subject to change.
+> **Access Control:** Includes two-tier authorization: route-level **RBAC** (`RequireRole` middleware) and domain-level **Data Scoping** (`UserPolicy` filtering).
 
 ## Features
 
 | Area               | Details                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------ |
 | Authentication     | JWT access + rotating refresh tokens (HttpOnly cookie, revocable), bcrypt password hashing             |
+| Authorization      | Two-tier: RBAC middleware (`RequireRole`) + Domain Policy data scoping (`FullAccess` / `FilteredScope`)  |
 | OAuth              | Google OAuth 2.0 for **web** (redirect) and **mobile** (custom URL-scheme deep link)                   |
 | Event-driven email | Transactional **outbox pattern** → RabbitMQ with **retry queue &amp; dead-letter queue** → SMTP worker |
 | Caching            | Redis (per-key TTL + pattern invalidation) with cache-aside and graceful fallback on cache errors      |
@@ -88,14 +89,12 @@ AES, OAuth, Cloudinary, per-app frontend URLs for multi-app OAuth).
 
 | #   | Layer                   | Packages                                                                                    | Responsibility                                                                                                                                    | May import                                  |
 | --- | ----------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| 1   | **Domain** (inner)      | `internal/domain/{entity, auth, permission*, policy*, vo}`                                  | Entities, value objects, invariants. Zero framework deps.                                                                                         | stdlib, `pkg/*` only                        |
+| 1   | **Domain** (inner)      | `internal/domain/{entity, auth, permission, policy, vo}`                                    | Entities, value objects, invariants, RBAC checker & scoping policies. Zero framework deps.                                                       | stdlib, `pkg/*` only                        |
 | 2   | **Application / ports** | `internal/application/port`, `internal/application/usecase`                                 | Use cases (login, register, OAuth, email verification, …) + all **port interfaces** (repositories, `TokenMaker`, `Mailer`, `Cache`, `Storage`, …) | `domain`, `dto`, `pkg/*`                    |
 | 3a  | **Inbound adapters**    | `internal/delivery/http/…` (handlers, routes, middleware, response), `internal/delivery/mq` | Translate HTTP / MQ messages → use-case calls; JSON envelope + i18n errors                                                                        | `application`, `domain`, `dto`, `pkg/*`     |
 | 3b  | **Outbound adapters**   | `internal/infrastructure/{repository, messaging, mailer, oauth, storage, security}`         | Concrete implementations of the ports (GORM, amqp09, SMTP, OAuth, Cloudinary, JWT/AES/bcrypt)                                                     | `application/port`, `domain`, `pkg/*`       |
 | 4   | **Composition root**    | `internal/app.go`, `cmd/server`, `cmd/migrate`                                              | Manual constructor DI wiring everything together; HTTP server + background workers; migration CLI                                                 | everything                                  |
 | —   | **Shared kernel**       | `pkg/{config, connection, logger, message, errors, utils}`, `internal/dto`                  | Leaf utilities: config/env, i18n catalogs, `AppError`/`ConsumerError`, shared DTOs                                                                | `pkg/*` is a leaf: imports nothing internal |
-
-\* RBAC-related (`permission`, `policy`) — under development.
 
 **Design decisions worth calling out**
 
@@ -118,7 +117,7 @@ AES, OAuth, Cloudinary, per-app frontend URLs for multi-app OAuth).
 HTTP request
    │
    ▼
-delivery/http  ── middleware: CORS → RequireAuth (JWT) → RequireRole* ── handler
+delivery/http  ── middleware: CORS → RequireAuth (JWT) → RequireRole (RBAC) ── handler
    │  validate DTO, call use case with context
    ▼
 application/usecase ── orchestrates ──► domain (entity rules)
@@ -161,6 +160,25 @@ Every message is **at-least-once**; consumers are written to be idempotent.
 Retryable failures are requeued through a per-exchange retry chain;
 non-retryable ones (or exhausted retries) land in the dead-letter queue.
 
+### Authorization & Data Scoping
+
+Access control operates on two distinct layers:
+
+1. **Route Level (RBAC Middleware)**:
+   `RequireRole(checker, permission)` checks whether the actor's role has permission to access the endpoint (`user:read`, `user:create`, `user:update`, `user:delete`).
+
+   | Role          | `user:read` | `user:create` | `user:update` | `user:delete` |
+   | ------------- | :---------: | :-----------: | :-----------: | :-----------: |
+   | `super_admin` |      ✅      |       ✅       |       ✅       |       ✅       |
+   | `user`        |      ✅      |       ❌       |       ✅       |       ❌       |
+
+2. **Data Level (Domain Policy Scoping)**:
+   Use cases evaluate `policy.UserPolicy` to determine *which records* the actor can access:
+   - **`super_admin` (`ScopeAll`)**: Has full access across all records.
+   - **`user` (`ScopeFiltered`)**: Scoped strictly to their own user ID (`actor.ID`).
+     - **Read (`GET`)**: Repository query automatically filters with `WHERE id IN (?)`.
+     - **Mutations (`PUT`/`DELETE`)**: Target record ownership is verified before modification.
+
 ## Project Layout
 
 ```
@@ -173,8 +191,8 @@ internal/
   domain/            LAYER 1: core business rules (no framework deps)
     entity/          domain objects
     auth/            token claims
-    permission/      permission definitions (RBAC, in progress)
-    policy/          role policies (RBAC, in progress)
+    permission/      RBAC permission definitions and role-permission matrix
+    policy/          data scoping policies (ScopeAll, ScopeFiltered, ScopeNone)
     vo/              value objects (role, gender, …)
   application/
     port/            outbound port interfaces (repo, mq, mailer, jwt, cache, …)
@@ -225,16 +243,16 @@ pkg/                 leaf utilities: config, connection, logger, message (i18n),
 | PUT    | `/api/v1/profile`                        | JWT   | Update profile            |
 | PUT    | `/api/v1/profile/change-password`        | JWT   | Change password           |
 | POST   | `/api/v1/profile/logout`                 | JWT   | Logout (revoke all)       |
-| GET    | `/api/v1/users`                          | JWT\* | List users (paginated)    |
-| GET    | `/api/v1/users/:id`                      | JWT\* | Get user by ID            |
-| POST   | `/api/v1/users`                          | JWT\* | Create user               |
-| PUT    | `/api/v1/users/:id`                      | JWT\* | Update user               |
-| PUT    | `/api/v1/users/:id/change-status`        | JWT\* | Toggle active status      |
-| DELETE | `/api/v1/users/:id`                      | JWT\* | Delete user               |
+| GET    | `/api/v1/users`                          | JWT\* | List users (paginated, scoped)    |
+| GET    | `/api/v1/users/:id`                      | JWT\* | Get user by ID (scoped)           |
+| POST   | `/api/v1/users`                          | JWT\* | Create user (super_admin)         |
+| PUT    | `/api/v1/users/:id`                      | JWT\* | Update user (scoped)              |
+| PUT    | `/api/v1/users/:id/change-status`        | JWT\* | Toggle active status (scoped)     |
+| DELETE | `/api/v1/users/:id`                      | JWT\* | Delete user (super_admin)         |
 
 `GET /health` returns a plain liveness probe.
 
-\* RBAC-protected routes (permission checks under development — see notice above).
+\* Protected by `RequireRole` (RBAC) and filtered by `UserPolicy` data scoping.
 
 **Auth**: `Authorization: Bearer <access_token>`; the refresh token is an
 HttpOnly `refresh_token` cookie. **i18n**: `Accept-Language: en | id`

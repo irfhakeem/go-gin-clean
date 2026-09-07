@@ -50,20 +50,20 @@ func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	container := internal.NewApp(postgresConn, rabbitConn, redisClient, cfg)
+	app := internal.NewApp(postgresConn, rabbitConn, redisClient, cfg)
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		container.OutboxWorker.Run(rootCtx)
+		app.OutboxWorker.Run(rootCtx)
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		container.ConsumerWorker.Run(rootCtx)
+		app.ConsumerWorker.Run(rootCtx)
 	}()
 
 	wg.Add(1)
@@ -71,10 +71,10 @@ func main() {
 		defer wg.Done()
 		connection.WatchRabbitMQ(rootCtx, rabbitConn, &cfg.RabbitMQ, func(newConn *amqp.Connection) {
 			rabbitConn = newConn
-			if err := container.Publisher.UpdateConnection(newConn); err != nil {
+			if err := app.Publisher.UpdateConnection(newConn); err != nil {
 				logger.Error("rabbitmq: failed to update publisher connection", zap.Error(err))
 			}
-			container.ConsumerWorker.Reconnect(newConn)
+			app.ConsumerWorker.Reconnect(newConn)
 		})
 	}()
 
@@ -87,7 +87,7 @@ func main() {
 		logger.Fatal("failed to register custom validations", zap.Error(err))
 	}
 
-	route.SetupRoutes(router, container.Token, container.Checker, container.UserHandler, container.OauthHandler)
+	route.SetupRoutes(router, app.Token, app.Checker, app.AuthHandler, app.UserHandler)
 
 	srv := &http.Server{
 		Addr:    cfg.Server.Address(),
