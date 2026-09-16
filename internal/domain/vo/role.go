@@ -29,10 +29,6 @@ func ParseRole(role string) (Role, error) {
 }
 
 func IsValidRole(role string) bool {
-	switch Role(role) {
-	case RoleSuperAdmin, RoleUser:
-		return true
-	default:
-		return false
-	}
+	_, err := ParseRole(role)
+	return err == nil
 }

@@ -26,7 +26,7 @@ type (
 		OAuthProvider string `gorm:"type:varchar(50);column:oauth_provider"`
 		OAuthID       string `gorm:"type:varchar(255);column:oauth_id"`
 
-		Audit
+		vo.Audit
 	}
 
 	UserEvent struct {

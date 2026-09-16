@@ -30,10 +30,6 @@ func ParseGender(gender string) (Gender, error) {
 }
 
 func IsValidGender(gender string) bool {
-	switch Gender(gender) {
-	case GenderMale, GenderFemale, GenderNotToSay:
-		return true
-	default:
-		return false
-	}
+	_, err := ParseGender(gender)
+	return err == nil
 }

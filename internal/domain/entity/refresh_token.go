@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"go-gin-clean/internal/domain/vo"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +16,7 @@ type RefreshToken struct {
 
 	User *User `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
-	Audit
+	vo.Audit
 }
 
 func (RefreshToken) TableName() string {

@@ -7,6 +7,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/lib/pq v1.10.9
 	github.com/redis/go-redis/v9 v9.14.0
+	go.uber.org/zap v1.28.0
 )
 
 require (
@@ -16,10 +17,8 @@ require (
 	github.com/gorilla/schema v1.4.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
-	go.uber.org/zap v1.28.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 )
 
