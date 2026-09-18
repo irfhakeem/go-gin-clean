@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"go-gin-clean/internal/application/usecase"
-	"go-gin-clean/internal/domain/entity"
+	"go-gin-clean/internal/dto/event"
+
 	pkgerrors "go-gin-clean/pkg/errors"
 	"net/textproto"
 )
@@ -21,7 +22,7 @@ func NewEmailEventHandler(emailUsecase usecase.EmailUseCase) *EmailEventHandler 
 }
 
 func (h *EmailEventHandler) HandleUserVerifyEmail(ctx context.Context, payload []byte) error {
-	var data entity.UserRegisterEvent
+	var data event.UserRegisterEvent
 
 	if err := checkJSON(payload, &data); err != nil {
 		return err
@@ -32,7 +33,7 @@ func (h *EmailEventHandler) HandleUserVerifyEmail(ctx context.Context, payload [
 }
 
 func (h *EmailEventHandler) HandleUserResetPasswordEmail(ctx context.Context, payload []byte) error {
-	var data entity.UserResetPasswordEvent
+	var data event.UserResetPasswordEvent
 
 	if err := checkJSON(payload, &data); err != nil {
 		return err

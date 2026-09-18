@@ -9,6 +9,7 @@ import (
 	"go-gin-clean/internal/application/port"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/internal/dto"
+	"go-gin-clean/internal/dto/event"
 	"go-gin-clean/pkg/config"
 	pkgerrors "go-gin-clean/pkg/errors"
 	"go-gin-clean/pkg/logger"
@@ -215,8 +216,8 @@ func (a *authUseCase) Register(ctx context.Context, req *dto.RegisterRequest) er
 	}
 
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", a.cfg.AppUrl, token)
-	message := entity.UserRegisterEvent{
-		UserEvent:       entity.UserEvent{UserID: savedUser.ID, Name: savedUser.Name},
+	message := event.UserRegisterEvent{
+		UserEvent:       event.UserEvent{UserID: savedUser.ID, Name: savedUser.Name},
 		Email:           savedUser.Email,
 		VerificationURL: verificationURL,
 	}
@@ -298,8 +299,8 @@ func (a *authUseCase) SendVerifyEmail(ctx context.Context, req *dto.SendVerifyEm
 	}
 
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", a.cfg.AppUrl, token)
-	message := entity.UserRegisterEvent{
-		UserEvent:       entity.UserEvent{UserID: user.ID, Name: user.Name},
+	message := event.UserRegisterEvent{
+		UserEvent:       event.UserEvent{UserID: user.ID, Name: user.Name},
 		Email:           user.Email,
 		VerificationURL: verificationURL,
 	}
@@ -357,8 +358,8 @@ func (a *authUseCase) SendResetPassword(ctx context.Context, req *dto.SendResetP
 	}
 
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", a.cfg.AppUrl, token)
-	message := entity.UserResetPasswordEvent{
-		UserEvent: entity.UserEvent{UserID: user.ID, Name: user.Name},
+	message := event.UserResetPasswordEvent{
+		UserEvent: event.UserEvent{UserID: user.ID, Name: user.Name},
 		Email:     user.Email,
 		ResetURL:  resetURL,
 	}
