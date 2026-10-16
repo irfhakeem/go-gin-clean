@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"math/rand"
+	cryptorand "crypto/rand"
 	"regexp"
 	"slices"
 	"strings"
@@ -22,18 +22,14 @@ func Contains(slice []string, item string) bool {
 func GenerateSlug(s string) string {
 	s = strings.ToLower(s)
 
-	// Replace spaces with hyphens
 	s = strings.ReplaceAll(s, " ", "-")
 
-	// Remove special characters except hyphens
 	reg := regexp.MustCompile(`[^a-z0-9\-]`)
 	s = reg.ReplaceAllString(s, "")
 
-	// Remove multiple consecutive hyphens
 	reg = regexp.MustCompile(`-+`)
 	s = reg.ReplaceAllString(s, "-")
 
-	// Trim hyphens from start and end
 	s = strings.Trim(s, "-")
 
 	return s
@@ -49,7 +45,11 @@ func GenerateUsername(name string) string {
 	nameArr := strings.Split(name, " ")
 	n := len(nameArr)
 	if n > 1 {
-		name = nameArr[n-2] + nameArr[n-1][:2]
+		last := nameArr[n-1]
+		if len(last) > 2 {
+			last = last[:2]
+		}
+		name = nameArr[n-2] + last
 	} else {
 		name = nameArr[0]
 	}
@@ -70,44 +70,17 @@ func GeneratePassword(length int, includeSpecialChars bool) string {
 	}
 
 	result := make([]byte, length)
-	for i := range result {
-		result[i] = charset[rand.Intn(len(charset))]
-	}
-
-	return string(result)
-}
-
-func ParseAllowedOrigins(originsStr string) []string {
-	if originsStr == "" {
-		return []string{}
-	}
-
-	origins := strings.Split(originsStr, ",")
-	for i, origin := range origins {
-		origins[i] = strings.TrimSpace(origin)
-	}
-	return origins
-}
-
-func ParseFrontendURLs(urlsStr string) map[string]string {
-	frontendURLs := make(map[string]string)
-
-	// Default to empty if not provided
-	if urlsStr == "" {
-		return frontendURLs
-	}
-
-	pairs := strings.Split(urlsStr, ";")
-	for _, pair := range pairs {
-		kv := strings.Split(pair, "=")
-		if len(kv) == 2 {
-			appID := strings.TrimSpace(kv[0])
-			url := strings.TrimSpace(kv[1])
-			frontendURLs[appID] = url
+	buf := make([]byte, length)
+	if _, err := cryptorand.Read(buf); err == nil {
+		for i := range result {
+			result[i] = charset[int(buf[i])%len(charset)]
+		}
+	} else {
+		for i := range result {
+			result[i] = charset[i%len(charset)]
 		}
 	}
-
-	return frontendURLs
+	return string(result)
 }
 
 func ParseUUID(s string) (uuid.UUID, error) {

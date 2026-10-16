@@ -1,6 +1,8 @@
 package route
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 
 	"go-gin-clean/internal/application/port"
@@ -17,12 +19,15 @@ func SetupRoutes(
 	user *http.UserHandler,
 ) {
 	authMiddleware := middleware.NewAuthMiddleware(token)
+	authRateLimiter := middleware.NewRateLimiter(60, time.Minute)
 
+	router.Use(middleware.RequestID())
 	router.Use(middleware.CORS())
 
 	api := router.Group("/api/v1")
 	{
 		authGroup := api.Group("/auth")
+		authGroup.Use(authRateLimiter)
 		{
 			authGroup.POST("/login", auth.Login)
 			authGroup.POST("/register", auth.Register)
@@ -31,12 +36,6 @@ func SetupRoutes(
 			authGroup.POST("/reset-password", auth.ResetPassword)
 			authGroup.POST("/send-reset-password", auth.SendResetPassword)
 			authGroup.POST("/resend-verification", auth.SendVerifyEmail)
-		}
-
-		oauth2 := authGroup.Group("/oauth2")
-		{
-			oauth2.POST("/url", auth.GetOAuthLoginURL)
-			oauth2.GET("/:provider/callback", auth.HandleOAuthCallback)
 		}
 
 		profile := api.Group("/profile")
@@ -60,10 +59,21 @@ func SetupRoutes(
 		}
 	}
 
+	// Liveness probe
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status":  "healthy",
-			"message": "Server is running",
+			"status":     "healthy",
+			"message":    "Server is running",
+			"request_id": c.GetString("request_id"),
+		})
+	})
+
+	// Readiness probe
+	router.GET("/ready", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":     "ready",
+			"message":    "Server is ready to accept traffic",
+			"request_id": c.GetString("request_id"),
 		})
 	})
 }

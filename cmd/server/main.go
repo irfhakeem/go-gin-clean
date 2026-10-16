@@ -90,8 +90,12 @@ func main() {
 	route.SetupRoutes(router, app.Token, app.Checker, app.AuthHandler, app.UserHandler)
 
 	srv := &http.Server{
-		Addr:    cfg.Server.Address(),
-		Handler: router,
+		Addr:              cfg.Server.Address(),
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {

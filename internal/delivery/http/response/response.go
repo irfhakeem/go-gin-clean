@@ -7,18 +7,21 @@ import (
 
 	"go-gin-clean/internal/dto/validator"
 	pkgerrors "go-gin-clean/pkg/errors"
+	"go-gin-clean/pkg/logger"
 	"go-gin-clean/pkg/message"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type Response struct {
-	Status  bool              `json:"status"`
-	Key     string            `json:"code,omitempty"`
-	Message string            `json:"message"`
-	Data    any               `json:"data,omitempty"`
-	Errors  map[string]string `json:"errors,omitempty"`
-	Meta    *Meta             `json:"meta,omitempty"`
+	Status    bool              `json:"status"`
+	Key       string            `json:"code,omitempty"`
+	Message   string            `json:"message"`
+	Data      any               `json:"data,omitempty"`
+	Errors    map[string]string `json:"errors,omitempty"`
+	Meta      *Meta             `json:"meta,omitempty"`
+	RequestID string            `json:"request_id,omitempty"`
 }
 
 type Meta struct {
@@ -52,33 +55,49 @@ func SetMeta(page, perPage, total, totalPages int) Meta {
 func Success(c *gin.Context, key message.MessageKey, data any, httpKey int) {
 	lang := detectLanguage(c)
 	c.JSON(httpKey, Response{
-		Status:  true,
-		Message: message.Get(lang, key),
-		Data:    data,
+		Status:    true,
+		Message:   message.Get(lang, key),
+		Data:      data,
+		RequestID: c.GetString("request_id"),
 	})
 }
 
 func SuccessPagination(c *gin.Context, key message.MessageKey, data any, meta Meta) {
 	lang := detectLanguage(c)
 	c.JSON(http.StatusOK, Response{
-		Status:  true,
-		Message: message.Get(lang, key),
-		Data:    data,
-		Meta:    &meta,
+		Status:    true,
+		Message:   message.Get(lang, key),
+		Data:      data,
+		Meta:      &meta,
+		RequestID: c.GetString("request_id"),
 	})
 }
 
 func Error(c *gin.Context, err error) {
 	lang := detectLanguage(c)
+	reqID := c.GetString("request_id")
 
 	var appErr *pkgerrors.AppError
 	if !errors.As(err, &appErr) {
+		logger.Error("unhandled internal server error",
+			zap.String("request_id", reqID),
+			zap.Error(err),
+		)
 		c.JSON(http.StatusInternalServerError, Response{
-			Status:  false,
-			Key:     message.ErrInternalServerError.String(),
-			Message: message.Get(lang, message.ErrInternalServerError),
+			Status:    false,
+			Key:       message.ErrInternalServerError.String(),
+			Message:   message.Get(lang, message.ErrInternalServerError),
+			RequestID: reqID,
 		})
 		return
+	}
+
+	if appErr.Type == pkgerrors.Internal {
+		logger.Error("internal application error",
+			zap.String("request_id", reqID),
+			zap.String("code", appErr.Key.String()),
+			zap.Error(appErr.Err),
+		)
 	}
 
 	var status int
@@ -100,9 +119,10 @@ func Error(c *gin.Context, err error) {
 	}
 
 	c.JSON(status, Response{
-		Status:  false,
-		Key:     appErr.Key.String(),
-		Message: message.Get(lang, appErr.Key),
+		Status:    false,
+		Key:       appErr.Key.String(),
+		Message:   message.Get(lang, appErr.Key),
+		RequestID: reqID,
 	})
 }
 

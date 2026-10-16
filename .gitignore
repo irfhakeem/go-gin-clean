@@ -8,3 +8,7 @@ scannerwork/
 
 assets/*
 !assets/.gitkeep
+
+.DS_Store
+*.DS_Store
+*.DS_STORE

@@ -24,9 +24,13 @@ func NewBaseRepository[T TableNamer](db *gorm.DB) *BaseRepository[T] {
 	}
 }
 
+func (r *BaseRepository[T]) getDB(ctx context.Context) *gorm.DB {
+	return getTx(ctx, r.db)
+}
+
 func (r *BaseRepository[T]) Raw(ctx context.Context, query string) ([]*T, error) {
 	var entities []*T
-	if err := r.db.WithContext(ctx).Raw(query).Scan(&entities).Error; err != nil {
+	if err := r.getDB(ctx).Raw(query).Scan(&entities).Error; err != nil {
 		return nil, err
 	}
 
@@ -38,7 +42,7 @@ func (r *BaseRepository[T]) FindAll(ctx context.Context, limit, offset int, quer
 	var count int64
 
 	var entity T
-	q := r.db.WithContext(ctx).Model(&entity)
+	q := r.getDB(ctx).Model(&entity)
 
 	q = q.Where(query, args...)
 
@@ -56,7 +60,7 @@ func (r *BaseRepository[T]) FindAll(ctx context.Context, limit, offset int, quer
 func (r *BaseRepository[T]) FindByID(ctx context.Context, id string) (*T, error) {
 	var entity T
 
-	q := r.db.WithContext(ctx)
+	q := r.getDB(ctx)
 
 	if err := q.Where("id = ?::uuid", id).Take(&entity).Error; err != nil {
 		return nil, err
@@ -68,7 +72,7 @@ func (r *BaseRepository[T]) FindByID(ctx context.Context, id string) (*T, error)
 func (r *BaseRepository[T]) FindFirst(ctx context.Context, query any, args ...any) (*T, error) {
 	var entity T
 
-	q := r.db.WithContext(ctx)
+	q := r.getDB(ctx)
 
 	if err := q.Where(query, args...).First(&entity).Error; err != nil {
 		return nil, err
@@ -80,7 +84,7 @@ func (r *BaseRepository[T]) FindFirst(ctx context.Context, query any, args ...an
 func (r *BaseRepository[T]) Where(ctx context.Context, query any, args ...any) ([]*T, error) {
 	var entities []*T
 
-	q := r.db.WithContext(ctx)
+	q := r.getDB(ctx)
 
 	if err := q.Where(query, args...).Order("id asc").Find(&entities).Error; err != nil {
 		return nil, err
@@ -91,7 +95,7 @@ func (r *BaseRepository[T]) Where(ctx context.Context, query any, args ...any) (
 func (r *BaseRepository[T]) WhereExisting(ctx context.Context, query any, args ...any) (bool, error) {
 	var entity T
 
-	q := r.db.WithContext(ctx)
+	q := r.getDB(ctx)
 
 	err := q.Where(query, args...).First(&entity).Error
 	if err == gorm.ErrRecordNotFound {
@@ -104,27 +108,10 @@ func (r *BaseRepository[T]) WhereExisting(ctx context.Context, query any, args .
 }
 
 func (r *BaseRepository[T]) Create(ctx context.Context, entity *T) (*T, error) {
-	tx := r.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return nil, tx.Error
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
 	tableName := (*entity).TableName()
-	if err := tx.Table(tableName).Create(entity).Error; err != nil {
-		tx.Rollback()
+	if err := r.getDB(ctx).Table(tableName).Create(entity).Error; err != nil {
 		return nil, err
 	}
-
-	if err := tx.Commit().Error; err != nil {
-		return nil, err
-	}
-
 	return entity, nil
 }
 
@@ -133,99 +120,31 @@ func (r *BaseRepository[T]) BulkCreate(ctx context.Context, entities []*T) ([]*T
 		return entities, nil
 	}
 
-	tx := r.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return nil, tx.Error
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
 	tableName := (*entities[0]).TableName()
-	if err := tx.Table(tableName).CreateInBatches(entities, 100).Error; err != nil {
-		tx.Rollback()
+	if err := r.getDB(ctx).Table(tableName).CreateInBatches(entities, 100).Error; err != nil {
 		return nil, err
 	}
-
-	if err := tx.Commit().Error; err != nil {
-		return nil, err
-	}
-
 	return entities, nil
 }
 
 func (r *BaseRepository[T]) Update(ctx context.Context, entity *T, id string) (*T, error) {
-	tx := r.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return nil, tx.Error
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	if err := tx.Model(entity).Where("id = ?::uuid", id).Updates(entity).Error; err != nil {
-		tx.Rollback()
+	if err := r.getDB(ctx).Model(entity).Where("id = ?::uuid", id).Updates(entity).Error; err != nil {
 		return nil, err
 	}
-
-	if err := tx.Commit().Error; err != nil {
-		return nil, err
-	}
-
-	result, err := r.FindByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return r.FindByID(ctx, id)
 }
 
 func (r *BaseRepository[T]) Delete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Delete(new(T), "id = ?::uuid", id).Error; err != nil {
-		return err
-	}
-
-	return nil
+	return r.getDB(ctx).Delete(new(T), "id = ?::uuid", id).Error
 }
 
 func (r *BaseRepository[T]) BulkDelete(ctx context.Context, ids []any) error {
 	if len(ids) == 0 {
 		return nil
 	}
-
-	tx := r.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	if err := tx.Where("id IN ?", ids).Delete(new(T)).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return err
-	}
-
-	return nil
+	return r.getDB(ctx).Where("id IN ?", ids).Delete(new(T)).Error
 }
 
 func (r *BaseRepository[T]) SoftDelete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Model(new(T)).Where("id = ?::uuid", id).Update("is_deleted", true).Error; err != nil {
-		return err
-	}
-
-	return nil
+	return r.getDB(ctx).Model(new(T)).Where("id = ?::uuid", id).Update("is_deleted", true).Error
 }

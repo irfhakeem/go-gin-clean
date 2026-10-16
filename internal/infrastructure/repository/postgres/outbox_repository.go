@@ -19,7 +19,7 @@ func NewPostgresOutboxRepository(db *gorm.DB) port.OutboxRepository {
 }
 
 func (r *PostgresOutboxRepository) Create(ctx context.Context, msg *entity.Outbox) error {
-	return r.db.WithContext(ctx).Create(msg).Error
+	return getTx(ctx, r.db).Create(msg).Error
 }
 
 func (r *PostgresOutboxRepository) FetchAndLockPending(ctx context.Context, limit int) ([]*entity.Outbox, error) {

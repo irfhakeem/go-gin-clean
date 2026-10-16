@@ -35,12 +35,12 @@ type UserUseCase interface {
 }
 
 type userUseCase struct {
-	policy policy.UserPolicy
+	policy    policy.UserPolicy
+	txManager port.TransactionManager
 
 	userRepo         port.UserRepository
 	refreshTokenRepo port.RefreshTokenRepository
 	outboxUseCase    OutboxUseCase
-
 	hasher  port.Hasher
 	storage port.Storage
 	cache   port.Cache
@@ -50,6 +50,7 @@ type userUseCase struct {
 
 func NewUserUseCase(
 	policy policy.UserPolicy,
+	txManager port.TransactionManager,
 	userRepo port.UserRepository,
 	refreshTokenRepo port.RefreshTokenRepository,
 	outboxUseCase OutboxUseCase,
@@ -60,6 +61,7 @@ func NewUserUseCase(
 ) UserUseCase {
 	return &userUseCase{
 		policy:           policy,
+		txManager:        txManager,
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		outboxUseCase:    outboxUseCase,
@@ -189,7 +191,7 @@ func (u *userUseCase) CreateUser(ctx context.Context, actor policy.Actor, req *d
 	}
 
 	if u.userRepo.ExistByEmail(ctx, req.Email) {
-		return nil, pkgerrors.WrapAppError(pkgerrors.Conflict, message.ErrCreateUser, pkgerrors.NewAppError(pkgerrors.Conflict, message.ErrEmailAlreadyExists))
+		return nil, pkgerrors.NewAppError(pkgerrors.Conflict, message.ErrEmailAlreadyExists)
 	}
 
 	hashedPassword, err := u.hasher.HashPassword(req.Password)
@@ -233,10 +235,13 @@ func (u *userUseCase) UpdateUser(ctx context.Context, actor policy.Actor, id str
 
 	if req.Avatar != nil {
 		allowedExtensions := []string{".jpg", ".jpeg", ".png"}
-		if !utils.IsValidExtension(req.Avatar.Filename, allowedExtensions) {
-			return nil, pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrUpdateUser, pkgerrors.NewAppError(pkgerrors.BadRequest, message.ErrUnsupportedImageType))
-		}
+		allowedMIMEs := []string{"image/jpeg", "image/png"}
+		maxAvatarSize := int64(5 * 1024 * 1024) // 5 MB
 
+		if !utils.IsValidExtension(req.Avatar.Filename, allowedExtensions) ||
+			!utils.IsValidImageHeader(req.Avatar, maxAvatarSize, allowedMIMEs) {
+			return nil, pkgerrors.NewAppError(pkgerrors.BadRequest, message.ErrUnsupportedImageType)
+		}
 		path, err := u.storage.UploadFile(
 			ctx,
 			fmt.Sprintf("avatar_%s_%d.jpg", user.ID.String(), time.Now().Unix()),
@@ -285,7 +290,7 @@ func (u *userUseCase) ChangePassword(ctx context.Context, actor policy.Actor, us
 	}
 
 	if err := u.hasher.ValidatePassword(req.OldPassword, user.Password); err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.BadRequest, message.ErrUpdateUserPassword, pkgerrors.NewAppError(pkgerrors.BadRequest, message.ErrPasswordNotMatch))
+		return pkgerrors.NewAppError(pkgerrors.BadRequest, message.ErrPasswordNotMatch)
 	}
 
 	hashedPassword, err := u.hasher.HashPassword(req.NewPassword)
@@ -294,11 +299,17 @@ func (u *userUseCase) ChangePassword(ctx context.Context, actor policy.Actor, us
 	}
 
 	user.SetPassword(hashedPassword)
-	if _, err = u.userRepo.Update(ctx, user); err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrUpdateUserPassword, err)
-	}
+	return u.txManager.WithTx(ctx, func(txCtx context.Context) error {
+		if _, err := u.userRepo.Update(txCtx, user); err != nil {
+			return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrUpdateUserPassword, err)
+		}
 
-	return nil
+		if err := u.refreshTokenRepo.RevokeAllByUserID(txCtx, user.ID.String()); err != nil {
+			return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrUpdateUserPassword, err)
+		}
+
+		return nil
+	})
 }
 
 func (u *userUseCase) ChangeStatus(ctx context.Context, actor policy.Actor, id string, req *dto.ChangeUserStatusRequest) error {
@@ -343,11 +354,13 @@ func (u *userUseCase) DeleteUser(ctx context.Context, actor policy.Actor, id str
 		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrDeleteUser, err)
 	}
 
-	if err = u.refreshTokenRepo.RevokeAllByUserID(ctx, user.ID.String()); err != nil {
-		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrDeleteUser, err)
-	}
-
-	if err = u.userRepo.Delete(ctx, user.ID.String()); err != nil {
+	err = u.txManager.WithTx(ctx, func(txCtx context.Context) error {
+		if err := u.refreshTokenRepo.RevokeAllByUserID(txCtx, user.ID.String()); err != nil {
+			return err
+		}
+		return u.userRepo.Delete(txCtx, user.ID.String())
+	})
+	if err != nil {
 		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrDeleteUser, err)
 	}
 

@@ -26,7 +26,7 @@ func (r *PostgresUserRepository) FindAll(ctx context.Context, params port.FindAl
 	var count int64
 
 	var user entity.User
-	q := r.db.WithContext(ctx).Model(&user)
+	q := getTx(ctx, r.db).Model(&user)
 
 	if params.IDs != nil {
 		if len(params.IDs) == 0 {
@@ -49,11 +49,8 @@ func (r *PostgresUserRepository) FindAll(ctx context.Context, params port.FindAl
 		q = q.Where("is_active = ?", *params.IsActive)
 	}
 
-	if params.SortBy != "" && (params.Sort == "asc" || params.Sort == "desc") {
-		q = q.Order(params.SortBy + " " + params.Sort)
-	} else {
-		q = q.Order("created_at desc")
-	}
+	sortCol, sortDir := SanitizeSortColumn(params.SortBy, params.Sort)
+	q = q.Order(sortCol + " " + sortDir)
 
 	if err := q.Count(&count).Error; err != nil {
 		return nil, 0, err
@@ -87,19 +84,28 @@ func (r *PostgresUserRepository) Update(ctx context.Context, user *entity.User) 
 	return r.baseRepo.Update(ctx, user, user.ID.String())
 }
 
-func (r *PostgresUserRepository) FindByOAuthID(ctx context.Context, provider, oauthID string) (*entity.User, error) {
-	return r.baseRepo.FindFirst(ctx, "oauth_provider = ? AND oauth_id = ?", provider, oauthID)
-}
-
-func (r *PostgresUserRepository) UpdateOAuthInfo(ctx context.Context, userID string, provider, oauthID string) error {
-	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?::uuid", userID).
-		Updates(map[string]interface{}{
-			"oauth_provider": provider,
-			"oauth_id":       oauthID,
-			"is_verified":    true,
-		}).Error
-}
-
 func (r *PostgresUserRepository) Delete(ctx context.Context, id string) error {
 	return r.baseRepo.Delete(ctx, id)
+}
+
+func SanitizeSortColumn(sortBy, sort string) (string, string) {
+	allowedSortColumns := map[string]string{
+		"id":         "id",
+		"name":       "name",
+		"email":      "email",
+		"created_at": "created_at",
+		"updated_at": "updated_at",
+	}
+
+	sortColumn, ok := allowedSortColumns[sortBy]
+	if !ok {
+		sortColumn = "created_at"
+	}
+
+	sortOrder := "desc"
+	if sort == "asc" {
+		sortOrder = "asc"
+	}
+
+	return sortColumn, sortOrder
 }

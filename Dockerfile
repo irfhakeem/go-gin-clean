@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 RUN apk add --no-cache git
 
@@ -15,15 +15,14 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN go build -o main ./cmd/server
-
-RUN go build -o migrate ./cmd/migrate
+# Build the binaries
+RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o main ./cmd/server
+RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o migrate ./cmd/migrate
 
 # Production stage
-FROM alpine:latest
+FROM alpine:3.21
 
-# Install ca-certificates if needed for HTTPS requests
+# Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates
 
 # Create a non-root user
@@ -33,19 +32,18 @@ RUN addgroup -g 1001 -S appgroup && \
 # Set working directory
 WORKDIR /app
 
-# Copy the binary from builder stage, migrations, and other necessary files
+# Copy binaries and migrations from builder stage
 COPY --from=builder /app/main .
 COPY --from=builder /app/migrate .
 COPY --from=builder /app/migrations ./migrations
-COPY --from=builder /app/assets ./assets
 
 # Change ownership to non-root user
-RUN chown appuser:appgroup main
+RUN chown -R appuser:appgroup /app
 
 # Switch to non-root user
 USER appuser
 
-EXPOSE ${SERVER_PORT}
+EXPOSE 3000
 
 # Run the binary
 CMD ["./main"]

@@ -42,7 +42,6 @@
 | ------------------ | ------------------------------------------------------------------------------------------------------ |
 | Authentication     | JWT access + rotating refresh tokens (HttpOnly cookie, revocable), bcrypt password hashing             |
 | Authorization      | Two-tier: RBAC middleware (`RequireRole`) + Domain Policy data scoping (`FullAccess` / `FilteredScope`)  |
-| OAuth              | Google OAuth 2.0 for **web** (redirect) and **mobile** (custom URL-scheme deep link)                   |
 | Event-driven email | Transactional **outbox pattern** → RabbitMQ with **retry queue &amp; dead-letter queue** → SMTP worker |
 | Caching            | Redis (per-key TTL + pattern invalidation) with cache-aside and graceful fallback on cache errors      |
 | API                | Gin REST API with unified JSON envelope, **i18n (EN/ID)** per `Accept-Language`, request validation    |
@@ -55,7 +54,6 @@
 
 - Go 1.24+
 - PostgreSQL, Redis, RabbitMQ (or `docker compose up -d`)
-- Google OAuth client `client_id`/`client_secret` (for the OAuth flows)
 
 ### Steps
 
@@ -79,10 +77,8 @@ The server listens on `http://localhost:3000` by default
 
 - **Port already in use** — change `SERVER_PORT` in `.env`.
 - **Outbox worker stuck-reset on startup** is logged as a restart recovery, not an error.
-- **OAuth callback fails** — make sure your registered redirect URI matches
-  `FRONTEND_URL` + `/api/v1/auth/oauth2/:provider/callback` exactly.
 - `.env.example` documents every variable (DB, Redis, RabbitMQ, SMTP, JWT,
-AES, OAuth, Cloudinary, per-app frontend URLs for multi-app OAuth).
+  AES, Cloudinary).
 </details>
 
 ## System Design
@@ -90,9 +86,9 @@ AES, OAuth, Cloudinary, per-app frontend URLs for multi-app OAuth).
 | #   | Layer                   | Packages                                                                                    | Responsibility                                                                                                                                    | May import                                  |
 | --- | ----------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | 1   | **Domain** (inner)      | `internal/domain/{entity, auth, permission, policy, vo}`                                    | Entities, value objects, invariants, RBAC checker & scoping policies. Zero framework deps.                                                       | stdlib, `pkg/*` only                        |
-| 2   | **Application / ports** | `internal/application/port`, `internal/application/usecase`                                 | Use cases (login, register, OAuth, email verification, …) + all **port interfaces** (repositories, `TokenMaker`, `Mailer`, `Cache`, `Storage`, …) | `domain`, `dto`, `pkg/*`                    |
+| 2   | **Application / ports** | `internal/application/port`, `internal/application/usecase`                                 | Use cases (login, register, email verification, …) + all **port interfaces** (repositories, `TokenMaker`, `Mailer`, `Cache`, `Storage`, …) | `domain`, `dto`, `pkg/*`                    |
 | 3a  | **Inbound adapters**    | `internal/delivery/http/…` (handlers, routes, middleware, response), `internal/delivery/mq` | Translate HTTP / MQ messages → use-case calls; JSON envelope + i18n errors                                                                        | `application`, `domain`, `dto`, `pkg/*`     |
-| 3b  | **Outbound adapters**   | `internal/infrastructure/{repository, messaging, mailer, oauth, storage, security}`         | Concrete implementations of the ports (GORM, amqp09, SMTP, OAuth, Cloudinary, JWT/AES/bcrypt)                                                     | `application/port`, `domain`, `pkg/*`       |
+| 3b  | **Outbound adapters**   | `internal/infrastructure/{repository, messaging, mailer, storage, security}`                | Concrete implementations of the ports (GORM, amqp09, SMTP, Cloudinary, JWT/AES/bcrypt)                                                            | `application/port`, `domain`, `pkg/*`       |
 | 4   | **Composition root**    | `internal/app.go`, `cmd/server`, `cmd/migrate`                                              | Manual constructor DI wiring everything together; HTTP server + background workers; migration CLI                                                 | everything                                  |
 | —   | **Shared kernel**       | `pkg/{config, connection, logger, message, errors, utils}`, `internal/dto`                  | Leaf utilities: config/env, i18n catalogs, `AppError`/`ConsumerError`, shared DTOs                                                                | `pkg/*` is a leaf: imports nothing internal |
 
@@ -204,7 +200,6 @@ internal/
     repository/      GORM repositories (users, refresh tokens, outbox)
     messaging/       RabbitMQ publisher/consumer (topology, retry, DLX)
     mailer/          SMTP email service + HTML templates
-    oauth/           Google OAuth provider
     storage/         Cloudinary file storage
     security/        JWT, AES (GCM + CTR), bcrypt
   worker/            background jobs (outbox dispatcher, email consumer)
@@ -237,8 +232,6 @@ pkg/                 leaf utilities: config, connection, logger, message (i18n),
 | POST   | `/api/v1/auth/send-reset-password`       | —     | Request password reset    |
 | POST   | `/api/v1/auth/reset-password`            | —     | Reset password            |
 | POST   | `/api/v1/auth/resend-verification`       | —     | Resend verification email |
-| POST   | `/api/v1/auth/oauth2/url`                | —     | Get OAuth login URL       |
-| GET    | `/api/v1/auth/oauth2/:provider/callback` | —     | OAuth callback            |
 | GET    | `/api/v1/profile`                        | JWT   | Get own profile           |
 | PUT    | `/api/v1/profile`                        | JWT   | Update profile            |
 | PUT    | `/api/v1/profile/change-password`        | JWT   | Change password           |

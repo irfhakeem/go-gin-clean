@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"mime/multipart"
 	"path/filepath"
 	"strings"
@@ -23,19 +23,20 @@ func NewCloudinaryStorage(cfg *config.CloudinaryConfig) port.Storage {
 	return &CloudinaryStorage{cfg: cfg}
 }
 
-func (c *CloudinaryStorage) credentials() *cloudinary.Cloudinary {
-	var err error
+func (c *CloudinaryStorage) credentials() (*cloudinary.Cloudinary, error) {
 	cld, err := cloudinary.NewFromURL(c.cfg.CloudinaryURL)
 	if err != nil {
-		log.Fatalf("Failed to initialize Cloudinary: %v", err)
+		return nil, fmt.Errorf("initialize cloudinary: %w", err)
 	}
 	cld.Config.URL.Secure = true
-	return cld
+	return cld, nil
 }
 
 func (c *CloudinaryStorage) UploadFile(ctx context.Context, filename string, size int64, fileHeader multipart.FileHeader, filePath string) (*string, error) {
-	credentials := c.credentials()
-
+	credentials, err := c.credentials()
+	if err != nil {
+		return nil, err
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		return nil, err
@@ -64,8 +65,11 @@ func (c *CloudinaryStorage) UploadFile(ctx context.Context, filename string, siz
 }
 
 func (c *CloudinaryStorage) DeleteFile(ctx context.Context, publicID string) error {
-	credentials := c.credentials()
-	_, err := credentials.Upload.Destroy(ctx, uploader.DestroyParams{
+	credentials, err := c.credentials()
+	if err != nil {
+		return err
+	}
+	_, err = credentials.Upload.Destroy(ctx, uploader.DestroyParams{
 		PublicID:     publicID,
 		ResourceType: "auto",
 	})

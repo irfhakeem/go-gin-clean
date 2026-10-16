@@ -54,6 +54,10 @@ func checkJSON(payload []byte, v any) error {
 }
 
 func checkSMTPError(err error) error {
+	if err == nil {
+		return nil
+	}
+
 	var smtpErr *textproto.Error
 	if errors.As(err, &smtpErr) {
 		if smtpErr.Code >= 400 && smtpErr.Code < 500 {

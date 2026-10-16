@@ -1,9 +1,7 @@
 package http
 
 import (
-	"fmt"
 	"net/http"
-	"net/url"
 
 	"go-gin-clean/internal/application/usecase"
 	"go-gin-clean/internal/delivery/http/response"
@@ -37,7 +35,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	setRefreshTokenCookie(c, result.RefreshToken, http.SameSiteStrictMode, 0, false)
+	setRefreshTokenCookie(c, result.RefreshToken, http.SameSiteStrictMode, 7*24*60*60)
 
 	response.Success(c, message.LoginSuccess, gin.H{
 		"access_token": result.AccessToken,
@@ -72,7 +70,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	setRefreshTokenCookie(c, result.RefreshToken, http.SameSiteStrictMode, 0, false)
+	setRefreshTokenCookie(c, result.RefreshToken, http.SameSiteStrictMode, 7*24*60*60)
 
 	response.Success(c, message.RefreshSuccess, result.AccessToken, http.StatusOK)
 }
@@ -88,7 +86,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		response.Error(c, err)
 		return
 	}
-
+	setRefreshTokenCookie(c, "", http.SameSiteStrictMode, -1)
 	response.Success(c, message.LogoutSuccess, nil, http.StatusOK)
 }
 
@@ -152,82 +150,8 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	response.Success(c, message.ResetPasswordSuccess, nil, http.StatusOK)
 }
 
-func (h *AuthHandler) GetOAuthLoginURL(c *gin.Context) {
-	var req dto.OAuthLoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.ValidationError(c, err)
-		return
-	}
-
-	if req.Platform == "" {
-		req.Platform = "web"
-	}
-
-	urlResp, err := h.authUseCase.GetOAuthLoginURL(c.Request.Context(), req.Provider, req.AppID, req.Platform)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	response.Success(c, message.OAuthLoginSuccess, urlResp, http.StatusOK)
-}
-
-func (h *AuthHandler) HandleOAuthCallback(c *gin.Context) {
-	provider := c.Param("provider")
-
-	var req dto.OAuthCallbackRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.ValidationError(c, err)
-		return
-	}
-
-	result, appID, platform, err := h.authUseCase.HandleOAuthCallback(c.Request.Context(), provider, &req)
-	if err != nil {
-		reason := response.Reason(c, err)
-		if platform == "mobile" {
-			deepLink := h.authUseCase.GetOAuthRedirectURL(appID, "mobile")
-			if deepLink == "" {
-				response.Error(c, err)
-				return
-			}
-
-			params := url.Values{}
-			params.Set("status", "error")
-			params.Set("error", reason)
-			c.Redirect(http.StatusFound, fmt.Sprintf("%s?%s", deepLink, params.Encode()))
-			return
-		}
-		frontendURL := h.authUseCase.GetOAuthRedirectURL(appID, "web")
-		params := url.Values{}
-		params.Set("error", reason)
-		c.Redirect(http.StatusFound, fmt.Sprintf("%s/oauth/error?%s", frontendURL, params.Encode()))
-		return
-	}
-
-	if platform == "mobile" {
-		deepLink := h.authUseCase.GetOAuthRedirectURL(appID, "mobile")
-		if deepLink == "" {
-			return
-		}
-
-		params := url.Values{}
-		params.Set("status", "success")
-		params.Set("access_token", result.AccessToken)
-		params.Set("refresh_token", result.RefreshToken)
-		c.Redirect(http.StatusFound, fmt.Sprintf("%s?%s", deepLink, params.Encode()))
-		return
-	}
-
-	setRefreshTokenCookie(c, result.RefreshToken, http.SameSiteLaxMode, 7*24*60*60, true)
-
-	frontendURL := h.authUseCase.GetOAuthRedirectURL(appID, "web")
-	c.Redirect(http.StatusFound, fmt.Sprintf("%s/oauth/callback#access_token=%s", frontendURL, result.AccessToken))
-}
-
-// setRefreshTokenCookie writes the HttpOnly refresh-token cookie.
-// Same-site endpoints (login/refresh) use Strict session cookies; the OAuth
-// web callback uses a Lax persistent cookie (cross-site redirect from provider).
-func setRefreshTokenCookie(c *gin.Context, refreshToken string, sameSite http.SameSite, maxAge int, secure bool) {
+func setRefreshTokenCookie(c *gin.Context, refreshToken string, sameSite http.SameSite, maxAge int) {
+	secure := gin.Mode() == gin.ReleaseMode || c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    refreshToken,

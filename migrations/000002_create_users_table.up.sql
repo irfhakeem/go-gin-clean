@@ -10,8 +10,6 @@ CREATE TABLE users (
     role role DEFAULT 'user',
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     is_verified BOOLEAN DEFAULT FALSE NOT NULL,
-    oauth_provider VARCHAR(50),
-    oauth_id VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP DEFAULT NULL,
@@ -19,5 +17,4 @@ CREATE TABLE users (
 );
 
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_oauth ON users(oauth_provider, oauth_id);
 CREATE INDEX idx_users_is_deleted ON users(is_deleted);

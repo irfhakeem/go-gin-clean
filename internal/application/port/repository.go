@@ -28,11 +28,9 @@ type UserRepository interface {
 	FindAll(ctx context.Context, params FindAllUsersParams) ([]*entity.User, int64, error)
 	FindByID(ctx context.Context, id string) (*entity.User, error)
 	FindByEmail(ctx context.Context, email string) (*entity.User, error)
-	FindByOAuthID(ctx context.Context, provider, oauthID string) (*entity.User, error)
 	ExistByEmail(ctx context.Context, email string) bool
 	Create(ctx context.Context, user *entity.User) (*entity.User, error)
 	Update(ctx context.Context, user *entity.User) (*entity.User, error)
-	UpdateOAuthInfo(ctx context.Context, userID, provider, oauthID string) error
 	Delete(ctx context.Context, id string) error
 }
 
@@ -52,4 +50,8 @@ type OutboxRepository interface {
 	MarkPublished(ctx context.Context, pkid int64) error
 	RetryOrFail(ctx context.Context, pkid int64, errMsg string) error
 	ResetStuck(ctx context.Context, stuckDuration time.Duration) error
+}
+
+type TransactionManager interface {
+	WithTx(ctx context.Context, fn func(txCtx context.Context) error) error
 }

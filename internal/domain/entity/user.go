@@ -23,9 +23,6 @@ type (
 		IsActive   bool      `gorm:"default:true;not null"`
 		IsVerified bool      `gorm:"default:false;not null"`
 
-		OAuthProvider string `gorm:"type:varchar(50);column:oauth_provider"`
-		OAuthID       string `gorm:"type:varchar(255);column:oauth_id"`
-
 		vo.Audit
 	}
 )
@@ -39,20 +36,6 @@ func NewUser(name, email, password string) (*User, error) {
 		Name:     name,
 		Email:    email,
 		Password: password,
-	}, nil
-}
-
-func NewUserFromOAuth(name, emailStr, oauthProvider, oauthID, avatar string) (*User, error) {
-	return &User{
-		Name:          name,
-		Email:         emailStr,
-		Password:      "",
-		Avatar:        avatar,
-		OAuthProvider: oauthProvider,
-		OAuthID:       oauthID,
-		IsVerified:    true,
-		Gender:        vo.GenderNotToSay,
-		IsActive:      true,
 	}, nil
 }
 
@@ -70,10 +53,6 @@ func (u *User) Deactivate() {
 
 func (u *User) VerifyEmail() {
 	u.IsVerified = true
-}
-
-func (u *User) IsOAuthUser() bool {
-	return u.OAuthProvider != "" && u.OAuthID != ""
 }
 
 func (u *User) IsActiveUser() bool {

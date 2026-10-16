@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"go-gin-clean/pkg/utils"
 	"os"
 	"strconv"
 	"time"
@@ -12,7 +11,6 @@ type Config struct {
 	Server     ServerConfig
 	Database   DatabaseConfig
 	JWT        JWTConfig
-	OAuth      OAuthConfig
 	AES        AESConfig
 	RabbitMQ   RabbitMQConfig
 	Cloudinary CloudinaryConfig
@@ -43,18 +41,6 @@ type JWTConfig struct {
 	RefreshTokenSecret string
 	AccessTokenExpiry  time.Duration
 	RefreshTokenExpiry time.Duration
-}
-
-type OAuthConfig struct {
-	GoogleClientID       string
-	GoogleClientSecret   string
-	GoogleRedirectURL    string
-	GoogleAllowedOrigins []string
-
-	OAuthStateString string
-	FrontendURLs     map[string]string
-	MobileDeepLinks  map[string]string
-	DefaultAppID     string
 }
 
 type AESConfig struct {
@@ -89,16 +75,7 @@ type EmailConfig struct {
 }
 
 func Load() (*Config, error) {
-	defaultAppID := getEnv("DEFAULT_APP_ID", "default")
-
-	frontendURLs := utils.ParseFrontendURLs(getEnv("FRONTEND_URLS", ""))
-	if len(frontendURLs) == 0 {
-		frontendURLs = map[string]string{
-			defaultAppID: getEnv("FRONTEND_URL", "http://localhost:3120"),
-		}
-	}
-
-	return &Config{
+	cfg := &Config{
 		Server: ServerConfig{
 			AppName:     getEnv("APP_NAME", "Go Gin Clean Template"),
 			Host:        getEnv("SERVER_HOST", "localhost"),
@@ -120,17 +97,6 @@ func Load() (*Config, error) {
 			RefreshTokenSecret: getEnv("JWT_REFRESH_SECRET", "your-refresh-secret-key"),
 			AccessTokenExpiry:  getEnvAsDuration("JWT_ACCESS_EXPIRY", 1*time.Hour),
 			RefreshTokenExpiry: getEnvAsDuration("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
-		},
-		OAuth: OAuthConfig{
-			GoogleClientID:       getEnv("GOOGLE_CLIENT_ID", "your-google-client-id"),
-			GoogleClientSecret:   getEnv("GOOGLE_CLIENT_SECRET", "your-google-client-secret"),
-			GoogleRedirectURL:    getEnv("GOOGLE_REDIRECT_URL", "http://localhost:3121/api/v1/auth/oauth2/google/callback"),
-			GoogleAllowedOrigins: utils.ParseAllowedOrigins(getEnv("GOOGLE_ALLOWED_ORIGINS", "http://localhost:3120")),
-
-			OAuthStateString: getEnv("OAUTH_STATE_STRING", "your-random-state-string"),
-			FrontendURLs:     frontendURLs,
-			MobileDeepLinks:  utils.ParseFrontendURLs(getEnv("MOBILE_DEEP_LINKS", "")),
-			DefaultAppID:     defaultAppID,
 		},
 		AES: AESConfig{
 			Key: getEnv("AES_KEY", "your-aes-encryption-key"),
@@ -157,7 +123,43 @@ func Load() (*Config, error) {
 			Password: getEnv("EMAIL_PASSWORD", ""),
 			From:     getEnv("EMAIL_FROM", ""),
 		},
-	}, nil
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+func (c *Config) Validate() error {
+	if c.Server.Environment == "production" {
+		insecurePlaceholders := map[string]string{
+			"JWT_ACCESS_SECRET":  c.JWT.AccessTokenSecret,
+			"JWT_REFRESH_SECRET": c.JWT.RefreshTokenSecret,
+			"AES_KEY":            c.AES.Key,
+		}
+
+		defaults := []string{
+			"your-access-secret-key",
+			"your-refresh-secret-key",
+			"your-aes-encryption-key",
+			"secret",
+			"password",
+		}
+
+		for name, val := range insecurePlaceholders {
+			if len(val) < 16 {
+				return fmt.Errorf("production security error: %s must be at least 16 characters", name)
+			}
+			for _, d := range defaults {
+				if val == d {
+					return fmt.Errorf("production security error: %s cannot use default placeholder %q", name, d)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (c *ServerConfig) Address() string {

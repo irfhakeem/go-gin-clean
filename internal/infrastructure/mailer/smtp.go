@@ -51,7 +51,7 @@ func (s *smtpMailer) SendEmail(to, subject, body string) error {
 }
 
 func (s *smtpMailer) LoadTemplate(templateName string, data any) (string, error) {
-	templatePath := fmt.Sprintf("templates/email/%s.html", templateName)
+	templatePath := fmt.Sprintf("templates/%s.html", templateName)
 
 	templateContent, err := templateFS.ReadFile(templatePath)
 	if err != nil {

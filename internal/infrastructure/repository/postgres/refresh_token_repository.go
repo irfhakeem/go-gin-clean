@@ -23,7 +23,7 @@ func NewPostgresRefreshTokenRepository(db *gorm.DB) port.RefreshTokenRepository 
 }
 
 func (r *PostgresRefreshTokenRepository) Save(ctx context.Context, token *entity.RefreshToken) error {
-	return r.db.WithContext(ctx).Exec(
+	return getTx(ctx, r.db).Exec(
 		"INSERT INTO refresh_tokens (token, user_id, is_revoked, expiry_at, created_at, updated_at) VALUES (?, ?::uuid, ?, ?, ?, ?)",
 		token.Token, token.UserID.String(), token.IsRevoked, token.ExpiryAt, token.CreatedAt, token.UpdatedAt,
 	).Error
@@ -38,26 +38,26 @@ func (r *PostgresRefreshTokenRepository) FindByUserID(ctx context.Context, userI
 }
 
 func (r *PostgresRefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID string) error {
-	return r.db.WithContext(ctx).Model(&entity.RefreshToken{}).
+	return getTx(ctx, r.db).Model(&entity.RefreshToken{}).
 		Where("user_id = ?::uuid AND is_revoked = ?", userID, false).
 		Update("is_revoked", true).Error
 }
 
 func (r *PostgresRefreshTokenRepository) RevokeByToken(ctx context.Context, token string) error {
-	return r.db.WithContext(ctx).Model(&entity.RefreshToken{}).
+	return getTx(ctx, r.db).Model(&entity.RefreshToken{}).
 		Where("token = ?", token).
 		Update("is_revoked", true).Error
 }
 
 func (r *PostgresRefreshTokenRepository) DeleteExpired(ctx context.Context) error {
-	return r.db.WithContext(ctx).
+	return getTx(ctx, r.db).
 		Where("expiry_at < ?", time.Now()).
 		Delete(&entity.RefreshToken{}).Error
 }
 
 func (r *PostgresRefreshTokenRepository) IsTokenValid(ctx context.Context, token string) bool {
 	var count int64
-	r.db.WithContext(ctx).Model(&entity.RefreshToken{}).
+	getTx(ctx, r.db).Model(&entity.RefreshToken{}).
 		Where("token = ? AND is_revoked = ? AND expiry_at > ?", token, false, time.Now()).
 		Count(&count)
 	return count > 0

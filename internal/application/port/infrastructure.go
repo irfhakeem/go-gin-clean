@@ -2,7 +2,6 @@ package port
 
 import (
 	"context"
-	"go-gin-clean/internal/domain/entity"
 	"mime/multipart"
 	"time"
 
@@ -22,13 +21,6 @@ type Consumer interface {
 type Mailer interface {
 	SendEmail(to string, subject string, body string) error
 	LoadTemplate(templateName string, data any) (string, error)
-}
-
-type OAuthProvider interface {
-	GetGoogleAuthURL(appID string, platform string) string
-	HandleGoogleCallback(ctx context.Context, state string, code string) (*entity.User, string, string, error)
-	GetFrontendURL(appID string) string
-	GetMobileDeepLinkURL(appID string) string
 }
 
 type Storage interface {
