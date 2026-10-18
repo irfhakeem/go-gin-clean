@@ -2,7 +2,12 @@
 
 tmp/
 
-docs/
+docs/*
+!docs/architecture/
+docs/architecture/*
+!docs/architecture/*/
+docs/architecture/*/*
+!docs/architecture/*/*.html
 
 scannerwork/
 

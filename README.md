@@ -107,73 +107,24 @@ The server listens on `http://localhost:3000` by default
   `SetPassword`, …); validation rules for _requests_ live in
   `internal/dto/validator` so domain types never grow HTTP concerns.
 
-### Request flow
+### Architecture & Runtime Visualization (`docs/architecture/`)
 
+Interactive multi-level architecture and sequence diagrams (generated with Archify and pinned to source lines) are available in [`docs/architecture/index.html`](docs/architecture/index.html):
+
+| Level | Diagram | What It Shows | Interactive View & Spec |
+| ----- | ------- | ------------- | ----------------------- |
+| **Portal** | **4-Level Drill-Down Index** | Overview, semantic color/arrow legend, and drill-down navigation (`Level 1 → Level 2 → Level 3 → Level 4`). | [`index.html`](docs/architecture/index.html) |
+| **Level 1** | **System Context** | High-level boundary of **Go Gin Clean API**, external actors (**End User**, **Super Admin**), and external systems (**PostgreSQL**, **Redis**, **RabbitMQ**, **Cloudinary**, **SMTP**). | [`level-1-context.html`](docs/architecture/level-1-context/level-1-context.html) · [`candidate.json`](docs/architecture/level-1-context/candidate.json) |
+| **Level 2** | **Containers & Runtime Processes** | Deployable Docker services (`postgres:16-alpine`, `redis:7-alpine`, `rabbitmq:3-management-alpine`), `cmd/migrate` CLI, and concurrent goroutines inside `cmd/server` (`Gin HTTP Server`, `OutboxWorker`, `ConsumerWorker`). | [`level-2-containers.html`](docs/architecture/level-2-containers/level-2-containers.html) · [`candidate.json`](docs/architecture/level-2-containers/candidate.json) |
+| **Level 3** | **Internal Components (Clean Architecture)** | Package-level dependency map across Delivery (`HTTP Middleware`, `AuthHandler`, `UserHandler`, `EmailEventHandler`), Application (`AuthUseCase`, `UserUseCase`, `OutboxUseCase`, `EmailUseCase`), Domain (`Checker`, `UserPolicy`, `Entities`), and Infrastructure (`GORM + WithTx`, `JWT/Bcrypt/AES`, `Redis`, `Cloudinary`, `RabbitMQ/SMTP`). | [`level-3-components.html`](docs/architecture/level-3-components/level-3-components.html) · [`candidate.json`](docs/architecture/level-3-components/candidate.json) |
+| **Level 4A** | **Register & Outbox Flow** | Step-by-step sequence for `POST /api/v1/auth/register`: atomic `WithTx` write (`userRepo.Create` + `outboxRepo.Create`), 5s `FOR UPDATE SKIP LOCKED` polling by `OutboxWorker`, RabbitMQ publish/retry/DLQ, and SMTP email delivery. | [`level-4-register-flow.html`](docs/architecture/level-4-register-flow/level-4-register-flow.html) · [`candidate.json`](docs/architecture/level-4-register-flow/candidate.json) |
+| **Level 4B** | **Login & Atomic Refresh Flow** | Step-by-step sequence for `POST /api/v1/auth/login` and `POST /api/v1/auth/refresh-token`: HS256 JWT + AES-256-GCM token encryption, `HttpOnly` cookie handling, and atomic `WithTx` token rotation (`RevokeByToken` + `Save`). | [`level-4-login-refresh-flow.html`](docs/architecture/level-4-login-refresh-flow/level-4-login-refresh-flow.html) · [`candidate.json`](docs/architecture/level-4-login-refresh-flow/candidate.json) |
+| **Level 4C** | **Two-Tier RBAC & Cache-Aside Flow** | Step-by-step sequence for `GET /api/v1/users`: Tier 1 route RBAC (`AuthMiddleware` + `RequireRole(UserRead)`), Tier 2 domain scoping (`UserPolicy.Scope`), scoped Redis cache-aside (`users:all:<role>:<id>:...`), and SQL-injection-safe sorting (`SanitizeSortColumn`). | [`level-4-users-rbac-flow.html`](docs/architecture/level-4-users-rbac-flow/level-4-users-rbac-flow.html) · [`candidate.json`](docs/architecture/level-4-users-rbac-flow/candidate.json) |
+
+```bash
+# Open the interactive drill-down portal locally
+open docs/architecture/index.html
 ```
-HTTP request
-   │
-   ▼
-delivery/http  ── middleware: CORS → RequireAuth (JWT) → RequireRole (RBAC) ── handler
-   │  validate DTO, call use case with context
-   ▼
-application/usecase ── orchestrates ──► domain (entity rules)
-   │  calls through port interfaces only
-   ├──► infrastructure/repository (Postgres/GORM)
-   ├──► infrastructure/cache        (Redis, cache-aside + pattern invalidation)
-   ├──► infrastructure/security     (JWT, AES encryption, bcrypt)
-   └──► outbox row written in the same DB transaction as the business state
-   │
-   ▼
-JSON envelope: { status, code, message, data?, meta? }   (i18n per Accept-Language)
-```
-
-### Async event flow (outbox → consumers)
-
-```
-                     ┌──────────────────────────────────────────────┐
- business write      │        Postgres (same transaction)           │
- ────────────────►   │   business table + outbox_messages           │
-                     └────────────────────┬─────────────────────────┘
-                                          │ poll (batch=10, every 5s,
-                                          │ stuck-reset after 5m)
-                                          ▼
-                                   OutboxWorker ──publish──► RabbitMQ
-                                                              exchange
-                                    ┌─────────────────────────┴──────┐
-                                    │ key: user.register             │
-                                    │ key: user.reset_password       │
-                                    └─────────────────────────────────┘
-                                          ▼
-                                     ┌─────────┐   retry≤N   ┌─────────┐   ┌──────┐
-                                     │ email   │───────────►│ .retry  │──►│  DLQ │
-                                     │ consumer│ ◄────────── │ (exch.) │   └──────┘
-                                     └────────┘   (requeue)
-                                          ▼
-                                     SMTP mailer
-```
-
-Every message is **at-least-once**; consumers are written to be idempotent.
-Retryable failures are requeued through a per-exchange retry chain;
-non-retryable ones (or exhausted retries) land in the dead-letter queue.
-
-### Authorization & Data Scoping
-
-Access control operates on two distinct layers:
-
-1. **Route Level (RBAC Middleware)**:
-   `RequireRole(checker, permission)` checks whether the actor's role has permission to access the endpoint (`user:read`, `user:create`, `user:update`, `user:delete`).
-
-   | Role          | `user:read` | `user:create` | `user:update` | `user:delete` |
-   | ------------- | :---------: | :-----------: | :-----------: | :-----------: |
-   | `super_admin` |      ✅      |       ✅       |       ✅       |       ✅       |
-   | `user`        |      ✅      |       ❌       |       ✅       |       ❌       |
-
-2. **Data Level (Domain Policy Scoping)**:
-   Use cases evaluate `policy.UserPolicy` to determine *which records* the actor can access:
-   - **`super_admin` (`ScopeAll`)**: Has full access across all records.
-   - **`user` (`ScopeFiltered`)**: Scoped strictly to their own user ID (`actor.ID`).
-     - **Read (`GET`)**: Repository query automatically filters with `WHERE id IN (?)`.
-     - **Mutations (`PUT`/`DELETE`)**: Target record ownership is verified before modification.
 
 ## Project Layout
 
@@ -274,9 +225,8 @@ docker run --rm --env-file .env go-gin-clean:latest ./migrate up
 ```
 
 Production checklist: set `ENVIRONMENT=production` and use strong secrets for
-`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `AES_KEY`, `AES_IV`, and
-`OAUTH_STATE_STRING`. Put the API behind TLS (CORS + `Secure` cookies are
-configured accordingly).
+`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `AES_KEY`, and `AES_IV`. Put the API
+behind TLS (CORS + `Secure` cookies are configured accordingly).
 
 ## Development
 
