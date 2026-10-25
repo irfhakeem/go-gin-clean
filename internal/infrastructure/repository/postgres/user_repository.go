@@ -49,7 +49,15 @@ func (r *PostgresUserRepository) FindAll(ctx context.Context, params port.FindAl
 		q = q.Where("is_active = ?", *params.IsActive)
 	}
 
-	sortCol, sortDir := SanitizeSortColumn(params.SortBy, params.Sort)
+	sortColumns := map[string]string{
+		"id":         "id",
+		"name":       "name",
+		"email":      "email",
+		"created_at": "created_at",
+		"updated_at": "updated_at",
+	}
+
+	sortCol, sortDir := SanitizeSortColumn(params.SortBy, params.Sort, sortColumns)
 	q = q.Order(sortCol + " " + sortDir)
 
 	if err := q.Count(&count).Error; err != nil {
@@ -86,26 +94,4 @@ func (r *PostgresUserRepository) Update(ctx context.Context, user *entity.User) 
 
 func (r *PostgresUserRepository) Delete(ctx context.Context, id string) error {
 	return r.baseRepo.Delete(ctx, id)
-}
-
-func SanitizeSortColumn(sortBy, sort string) (string, string) {
-	allowedSortColumns := map[string]string{
-		"id":         "id",
-		"name":       "name",
-		"email":      "email",
-		"created_at": "created_at",
-		"updated_at": "updated_at",
-	}
-
-	sortColumn, ok := allowedSortColumns[sortBy]
-	if !ok {
-		sortColumn = "created_at"
-	}
-
-	sortOrder := "desc"
-	if sort == "asc" {
-		sortOrder = "asc"
-	}
-
-	return sortColumn, sortOrder
 }

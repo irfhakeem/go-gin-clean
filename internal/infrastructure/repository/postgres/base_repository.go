@@ -148,3 +148,17 @@ func (r *BaseRepository[T]) BulkDelete(ctx context.Context, ids []any) error {
 func (r *BaseRepository[T]) SoftDelete(ctx context.Context, id string) error {
 	return r.getDB(ctx).Model(new(T)).Where("id = ?::uuid", id).Update("is_deleted", true).Error
 }
+
+func SanitizeSortColumn(sortBy, sort string, sortColums map[string]string) (string, string) {
+	sortColumn, ok := sortColums[sortBy]
+	if !ok {
+		sortColumn = "created_at"
+	}
+
+	sortOrder := "desc"
+	if sort == "asc" {
+		sortOrder = "asc"
+	}
+
+	return sortColumn, sortOrder
+}
