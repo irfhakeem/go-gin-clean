@@ -14,9 +14,6 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
-	gormpostgres "gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 func main() {
@@ -57,18 +54,6 @@ func main() {
 	default:
 		log.Fatal("Unknown command. Available commands: up, down, force, version, create")
 	}
-}
-
-func setupDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-	db, err := gorm.Open(gormpostgres.Open(cfg.Url), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
 }
 
 func getMigrate(cfg *config.DatabaseConfig) (*migrate.Migrate, error) {

@@ -126,16 +126,6 @@ func Error(c *gin.Context, err error) {
 	})
 }
 
-func Reason(c *gin.Context, err error) string {
-	lang := detectLanguage(c)
-
-	var appErr *pkgerrors.AppError
-	if !errors.As(err, &appErr) {
-		return err.Error()
-	}
-	return message.Get(lang, appErr.Key)
-}
-
 func ValidationError(c *gin.Context, err error) {
 	lang := detectLanguage(c)
 

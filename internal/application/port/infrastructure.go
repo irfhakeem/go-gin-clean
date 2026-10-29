@@ -27,12 +27,10 @@ type Storage interface {
 	UploadFile(ctx context.Context, filename string, size int64, fileHeader multipart.FileHeader, filePath string) (*string, error)
 	DeleteFile(ctx context.Context, path string) error
 }
+
 type Cache interface {
-	Set(ctx context.Context, key string, value any) error
 	Get(ctx context.Context, key string, dest any) error
-	GetString(ctx context.Context, key string) (string, error)
 	Delete(ctx context.Context, key string) error
 	DeletePattern(ctx context.Context, pattern string) error
-	Exists(ctx context.Context, key string) (bool, error)
 	SetWithExpiration(ctx context.Context, key string, value any, expiration time.Duration) error
 }

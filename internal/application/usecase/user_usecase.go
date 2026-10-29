@@ -363,6 +363,15 @@ func (u *userUseCase) DeleteUser(ctx context.Context, actor policy.Actor, id str
 	if err != nil {
 		return pkgerrors.WrapAppError(pkgerrors.Internal, message.ErrDeleteUser, err)
 	}
+	if user.Avatar != "" {
+		if err := u.storage.DeleteFile(ctx, user.Avatar); err != nil {
+			logger.Error("failed to delete user avatar from storage",
+				zap.String("user_id", id),
+				zap.String("avatar", user.Avatar),
+				zap.Error(err),
+			)
+		}
+	}
 
 	cacheKey := fmt.Sprintf("user:id:%s", id)
 	if err := u.cache.Delete(ctx, cacheKey); err != nil {

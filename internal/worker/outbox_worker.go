@@ -32,16 +32,6 @@ func NewOutboxWorker(outboxUseCase usecase.OutboxUseCase) *OutboxWorker {
 	}
 }
 
-func (w *OutboxWorker) WithBatchSize(n int) *OutboxWorker {
-	w.batchSize = n
-	return w
-}
-
-func (w *OutboxWorker) WithPollInterval(d time.Duration) *OutboxWorker {
-	w.pollInterval = d
-	return w
-}
-
 func (w *OutboxWorker) Run(ctx context.Context) {
 	logger.Info("outbox worker starting")
 

@@ -22,15 +22,6 @@ func NewRedisCache(client *redis.Client, cfg *config.RedisConfig) port.Cache {
 	return &redisCache{cfg: cfg, client: client}
 }
 
-func (r *redisCache) Set(ctx context.Context, key string, value any) error {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	exp := time.Duration(r.cfg.Expiration) * time.Second
-	return r.client.Set(ctx, key, data, exp).Err()
-}
-
 func (r *redisCache) Get(ctx context.Context, key string, dest any) error {
 	val, err := r.client.Get(ctx, key).Result()
 	if err == redis.Nil {
@@ -41,11 +32,6 @@ func (r *redisCache) Get(ctx context.Context, key string, dest any) error {
 	}
 	return json.Unmarshal([]byte(val), dest)
 }
-
-func (r *redisCache) GetString(ctx context.Context, key string) (string, error) {
-	return r.client.Get(ctx, key).Result()
-}
-
 func (r *redisCache) Delete(ctx context.Context, key string) error {
 	return r.client.Del(ctx, key).Err()
 }
@@ -59,15 +45,6 @@ func (r *redisCache) DeletePattern(ctx context.Context, pattern string) error {
 	}
 	return iter.Err()
 }
-
-func (r *redisCache) Exists(ctx context.Context, key string) (bool, error) {
-	res, err := r.client.Exists(ctx, key).Result()
-	if err != nil {
-		return false, err
-	}
-	return res > 0, nil
-}
-
 func (r *redisCache) SetWithExpiration(ctx context.Context, key string, value any, expiration time.Duration) error {
 	data, err := json.Marshal(value)
 	if err != nil {

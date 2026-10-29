@@ -40,12 +40,6 @@ func WrapAppError(errType AppErrorType, key message.MessageKey, err error) *AppE
 	}
 }
 
-// IsAppError reports whether err is (or wraps) an *AppError.
-func IsAppError(err error) bool {
-	var appErr *AppError
-	return errors.As(err, &appErr)
-}
-
 // AsAppError returns err itself if it is already (or wraps) an *AppError,
 // otherwise it wraps err into a new *AppError with the given type and key.
 func AsAppError(errType AppErrorType, key message.MessageKey, err error) *AppError {

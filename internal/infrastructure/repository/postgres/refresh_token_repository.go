@@ -11,15 +11,11 @@ import (
 )
 
 type PostgresRefreshTokenRepository struct {
-	db       *gorm.DB
-	baseRepo *BaseRepository[entity.RefreshToken]
+	db *gorm.DB
 }
 
 func NewPostgresRefreshTokenRepository(db *gorm.DB) port.RefreshTokenRepository {
-	return &PostgresRefreshTokenRepository{
-		db:       db,
-		baseRepo: NewBaseRepository[entity.RefreshToken](db),
-	}
+	return &PostgresRefreshTokenRepository{db: db}
 }
 
 func (r *PostgresRefreshTokenRepository) Save(ctx context.Context, token *entity.RefreshToken) error {
@@ -28,15 +24,6 @@ func (r *PostgresRefreshTokenRepository) Save(ctx context.Context, token *entity
 		token.Token, token.UserID.String(), token.IsRevoked, token.ExpiryAt, token.CreatedAt, token.UpdatedAt,
 	).Error
 }
-
-func (r *PostgresRefreshTokenRepository) FindByToken(ctx context.Context, token string) (*entity.RefreshToken, error) {
-	return r.baseRepo.FindFirst(ctx, "token = ? AND is_revoked = ? AND expiry_at > ?", token, false, time.Now())
-}
-
-func (r *PostgresRefreshTokenRepository) FindByUserID(ctx context.Context, userID string) ([]*entity.RefreshToken, error) {
-	return r.baseRepo.Where(ctx, "user_id = ?::uuid", userID)
-}
-
 func (r *PostgresRefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID string) error {
 	return getTx(ctx, r.db).Model(&entity.RefreshToken{}).
 		Where("user_id = ?::uuid AND is_revoked = ?", userID, false).
@@ -47,12 +34,6 @@ func (r *PostgresRefreshTokenRepository) RevokeByToken(ctx context.Context, toke
 	return getTx(ctx, r.db).Model(&entity.RefreshToken{}).
 		Where("token = ?", token).
 		Update("is_revoked", true).Error
-}
-
-func (r *PostgresRefreshTokenRepository) DeleteExpired(ctx context.Context) error {
-	return getTx(ctx, r.db).
-		Where("expiry_at < ?", time.Now()).
-		Delete(&entity.RefreshToken{}).Error
 }
 
 func (r *PostgresRefreshTokenRepository) IsTokenValid(ctx context.Context, token string) bool {

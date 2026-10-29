@@ -36,11 +36,8 @@ type UserRepository interface {
 
 type RefreshTokenRepository interface {
 	Save(ctx context.Context, token *entity.RefreshToken) error
-	FindByToken(ctx context.Context, token string) (*entity.RefreshToken, error)
-	FindByUserID(ctx context.Context, userID string) ([]*entity.RefreshToken, error)
 	RevokeAllByUserID(ctx context.Context, userID string) error
 	RevokeByToken(ctx context.Context, token string) error
-	DeleteExpired(ctx context.Context) error
 	IsTokenValid(ctx context.Context, token string) bool
 }
 

@@ -43,22 +43,7 @@ func (u *User) SetPassword(hashedPassword string) {
 	u.Password = hashedPassword
 }
 
-func (u *User) Activate() {
-	u.IsActive = true
-}
-
-func (u *User) Deactivate() {
-	u.IsActive = false
-}
-
 func (u *User) VerifyEmail() {
 	u.IsVerified = true
 }
 
-func (u *User) IsActiveUser() bool {
-	return u.IsActive
-}
-
-func (u *User) IsVerifiedUser() bool {
-	return u.IsVerified
-}

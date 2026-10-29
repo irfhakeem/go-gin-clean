@@ -32,27 +32,3 @@ func NewRefreshToken(userID uuid.UUID, token string, expiryAt time.Time, isRevok
 		User:      user,
 	}
 }
-
-func (rf *RefreshToken) GetID() uuid.UUID {
-	return rf.ID
-}
-
-func (rf *RefreshToken) GetUserID() uuid.UUID {
-	return rf.UserID
-}
-
-func (rf *RefreshToken) GetToken() string {
-	return rf.Token
-}
-
-func (rf *RefreshToken) IsExpired() bool {
-	return time.Now().After(rf.ExpiryAt)
-}
-
-func (rf *RefreshToken) Revoke() {
-	rf.IsRevoked = true
-}
-
-func (rf *RefreshToken) IsValid() bool {
-	return !rf.IsRevoked && !rf.IsExpired()
-}

@@ -63,12 +63,13 @@ func (c *CloudinaryStorage) UploadFile(ctx context.Context, filename string, siz
 
 	return &uploadResult.SecureURL, nil
 }
-
-func (c *CloudinaryStorage) DeleteFile(ctx context.Context, publicID string) error {
+func (c *CloudinaryStorage) DeleteFile(ctx context.Context, path string) error {
 	credentials, err := c.credentials()
 	if err != nil {
 		return err
 	}
+
+	publicID := extractPublicID(path)
 	_, err = credentials.Upload.Destroy(ctx, uploader.DestroyParams{
 		PublicID:     publicID,
 		ResourceType: "auto",
@@ -78,4 +79,20 @@ func (c *CloudinaryStorage) DeleteFile(ctx context.Context, publicID string) err
 	}
 
 	return nil
+}
+
+func extractPublicID(fileURL string) string {
+	if idx := strings.Index(fileURL, "/upload/"); idx != -1 {
+		path := fileURL[idx+len("/upload/"):]
+		if strings.HasPrefix(path, "v") {
+			if slashIdx := strings.Index(path, "/"); slashIdx != -1 {
+				path = path[slashIdx+1:]
+			}
+		}
+		ext := filepath.Ext(path)
+		return strings.TrimSuffix(path, ext)
+	}
+
+	ext := filepath.Ext(fileURL)
+	return strings.TrimSuffix(fileURL, ext)
 }
