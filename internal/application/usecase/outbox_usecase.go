@@ -46,20 +46,20 @@ func (u *outboxUseCase) ProcessBatch(ctx context.Context, limit int) error {
 	for _, msg := range messages {
 		if pubErr := u.publisher.Publish(msg.EventType, msg.Payload); pubErr != nil {
 			logger.Error("outbox publish failed",
-				zap.Int64("pkid", msg.PKID),
+				zap.Int64("id", msg.ID),
 				zap.String("event", msg.EventType),
 				zap.Error(pubErr),
 			)
-			if retryErr := u.outboxRepo.RetryOrFail(ctx, msg.PKID, pubErr.Error()); retryErr != nil {
+			if retryErr := u.outboxRepo.RetryOrFail(ctx, msg.ID, pubErr.Error()); retryErr != nil {
 				logger.Error("outbox retry failed",
-					zap.Int64("pkid", msg.PKID),
+					zap.Int64("id", msg.ID),
 					zap.Error(retryErr),
 				)
 			}
 		} else {
-			if markErr := u.outboxRepo.MarkPublished(ctx, msg.PKID); markErr != nil {
+			if markErr := u.outboxRepo.MarkPublished(ctx, msg.ID); markErr != nil {
 				logger.Error("outbox mark published failed",
-					zap.Int64("pkid", msg.PKID),
+					zap.Int64("id", msg.ID),
 					zap.Error(markErr),
 				)
 			}

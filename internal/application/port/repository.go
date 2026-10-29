@@ -47,8 +47,8 @@ type RefreshTokenRepository interface {
 type OutboxRepository interface {
 	Create(ctx context.Context, msg *entity.Outbox) error
 	FetchAndLockPending(ctx context.Context, limit int) ([]*entity.Outbox, error)
-	MarkPublished(ctx context.Context, pkid int64) error
-	RetryOrFail(ctx context.Context, pkid int64, errMsg string) error
+	MarkPublished(ctx context.Context, id int64) error
+	RetryOrFail(ctx context.Context, id int64, errMsg string) error
 	ResetStuck(ctx context.Context, stuckDuration time.Duration) error
 }
 

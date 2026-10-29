@@ -43,29 +43,29 @@ func (r *PostgresOutboxRepository) FetchAndLockPending(ctx context.Context, limi
 
 		ids := make([]int64, len(messages))
 		for i, m := range messages {
-			ids[i] = m.PKID
+			ids[i] = m.ID
 		}
 
 		return tx.Exec(`
 			UPDATE outbox_messages
 			SET status = 'processing', updated_at = NOW()
-			WHERE pkid IN ?
+			WHERE id IN ?
 		`, ids).Error
 	})
 
 	return messages, err
 }
 
-func (r *PostgresOutboxRepository) MarkPublished(ctx context.Context, pkid int64) error {
+func (r *PostgresOutboxRepository) MarkPublished(ctx context.Context, id int64) error {
 	now := time.Now()
 	return r.db.WithContext(ctx).Exec(`
 		UPDATE outbox_messages
 		SET status = 'published', published_at = ?, updated_at = NOW()
-		WHERE pkid = ?
-	`, now, pkid).Error
+		WHERE id = ?
+	`, now, id).Error
 }
 
-func (r *PostgresOutboxRepository) RetryOrFail(ctx context.Context, pkid int64, errMsg string) error {
+func (r *PostgresOutboxRepository) RetryOrFail(ctx context.Context, id int64, errMsg string) error {
 	return r.db.WithContext(ctx).Exec(`
 		UPDATE outbox_messages
 		SET
@@ -76,8 +76,8 @@ func (r *PostgresOutboxRepository) RetryOrFail(ctx context.Context, pkid int64, 
 				ELSE 'pending'::outbox_status
 			END,
 			updated_at = NOW()
-		WHERE pkid = ?
-	`, errMsg, pkid).Error
+		WHERE id = ?
+	`, errMsg, id).Error
 }
 
 func (r *PostgresOutboxRepository) ResetStuck(ctx context.Context, stuckDuration time.Duration) error {

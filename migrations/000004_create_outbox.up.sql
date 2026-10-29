@@ -1,7 +1,7 @@
 CREATE TYPE outbox_status AS ENUM ('pending', 'processing', 'published', 'failed');
 
 CREATE TABLE outbox_messages (
-    pkid           BIGSERIAL     PRIMARY KEY,
+    id             BIGSERIAL     PRIMARY KEY,
     aggregate_type VARCHAR(100)  NOT NULL,
     aggregate_id   VARCHAR(100)  NOT NULL,
     event_type     VARCHAR(100)  NOT NULL,

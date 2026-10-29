@@ -16,7 +16,7 @@ func (s OutboxStatus) String() string {
 }
 
 type Outbox struct {
-	PKID          int64        `gorm:"column:pkid;primaryKey;autoIncrement"`
+	ID            int64        `gorm:"column:id;primaryKey;autoIncrement"`
 	AggregateType string       `gorm:"column:aggregate_type;not null"`
 	AggregateID   string       `gorm:"column:aggregate_id;not null"`
 	EventType     string       `gorm:"column:event_type;not null"`
