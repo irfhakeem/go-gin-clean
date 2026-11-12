@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"go-gin-clean/internal/application/port/outbound"
+	"go-gin-clean/internal/domain/gateway"
 	"go-gin-clean/internal/delivery/http"
 	"go-gin-clean/internal/delivery/http/middleware"
 	"go-gin-clean/internal/domain/permission"
@@ -13,7 +13,7 @@ import (
 
 func SetupRoutes(
 	router *gin.Engine,
-	token outbound.TokenMaker,
+	token gateway.TokenMaker,
 	checker permission.Checker,
 	auth *http.AuthHandler,
 	user *http.UserHandler,

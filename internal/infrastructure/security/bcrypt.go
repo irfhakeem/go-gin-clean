@@ -1,14 +1,14 @@
 package security
 
 import (
-	"go-gin-clean/internal/application/port/outbound"
+	"go-gin-clean/internal/domain/gateway"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 type bcryptHasher struct{}
 
-func NewBcryptHasher() outbound.Hasher {
+func NewBcryptHasher() gateway.Hasher {
 	return &bcryptHasher{}
 }
 

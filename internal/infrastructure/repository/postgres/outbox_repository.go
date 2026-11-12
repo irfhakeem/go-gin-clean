@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"go-gin-clean/internal/application/port/outbound"
+	"go-gin-clean/internal/domain/repository"
 	"go-gin-clean/internal/domain/entity"
 
 	"gorm.io/gorm"
@@ -14,7 +14,7 @@ type PostgresOutboxRepository struct {
 	db *gorm.DB
 }
 
-func NewPostgresOutboxRepository(db *gorm.DB) outbound.OutboxRepository {
+func NewPostgresOutboxRepository(db *gorm.DB) repository.OutboxRepository {
 	return &PostgresOutboxRepository{db: db}
 }
 

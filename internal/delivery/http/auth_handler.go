@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"go-gin-clean/internal/application/port/inbound"
+	"go-gin-clean/internal/usecase"
 	"go-gin-clean/internal/delivery/http/response"
 	"go-gin-clean/internal/dto"
 	pkgerrors "go-gin-clean/pkg/errors"
@@ -13,10 +13,10 @@ import (
 )
 
 type AuthHandler struct {
-	authUseCase inbound.AuthUseCase
+	authUseCase usecase.AuthUseCase
 }
 
-func NewAuthHandler(authUseCase inbound.AuthUseCase) *AuthHandler {
+func NewAuthHandler(authUseCase usecase.AuthUseCase) *AuthHandler {
 	return &AuthHandler{
 		authUseCase: authUseCase,
 	}

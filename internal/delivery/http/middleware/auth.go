@@ -3,7 +3,7 @@ package middleware
 import (
 	"strings"
 
-	"go-gin-clean/internal/application/port/outbound"
+	"go-gin-clean/internal/domain/gateway"
 	"go-gin-clean/internal/delivery/http/response"
 	"go-gin-clean/internal/domain/policy"
 	pkgerrors "go-gin-clean/pkg/errors"
@@ -13,10 +13,10 @@ import (
 )
 
 type AuthMiddleware struct {
-	token outbound.TokenMaker
+	token gateway.TokenMaker
 }
 
-func NewAuthMiddleware(token outbound.TokenMaker) *AuthMiddleware {
+func NewAuthMiddleware(token gateway.TokenMaker) *AuthMiddleware {
 	return &AuthMiddleware{
 		token: token,
 	}

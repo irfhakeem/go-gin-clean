@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 
-	"go-gin-clean/internal/application/port/outbound"
+	"go-gin-clean/internal/domain/repository"
 	"go-gin-clean/internal/domain/entity"
 
 	"gorm.io/gorm"
@@ -14,14 +14,14 @@ type PostgresUserRepository struct {
 	baseRepo *BaseRepository[entity.User]
 }
 
-func NewPostgresUserRepository(db *gorm.DB) outbound.UserRepository {
+func NewPostgresUserRepository(db *gorm.DB) repository.UserRepository {
 	return &PostgresUserRepository{
 		db:       db,
 		baseRepo: NewBaseRepository[entity.User](db),
 	}
 }
 
-func (r *PostgresUserRepository) FindAll(ctx context.Context, params outbound.FindAllUsersParams) ([]*entity.User, int64, error) {
+func (r *PostgresUserRepository) FindAll(ctx context.Context, params repository.FindAllUsersParams) ([]*entity.User, int64, error) {
 	var users []*entity.User
 	var count int64
 

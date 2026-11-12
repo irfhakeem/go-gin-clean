@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"go-gin-clean/internal/application/port/inbound"
+	"go-gin-clean/internal/usecase"
 	"go-gin-clean/internal/dto/event"
 
 	pkgerrors "go-gin-clean/pkg/errors"
@@ -12,10 +12,10 @@ import (
 )
 
 type EmailEventHandler struct {
-	emailUsecase inbound.EmailUseCase
+	emailUsecase usecase.EmailUseCase
 }
 
-func NewEmailEventHandler(emailUsecase inbound.EmailUseCase) *EmailEventHandler {
+func NewEmailEventHandler(emailUsecase usecase.EmailUseCase) *EmailEventHandler {
 	return &EmailEventHandler{
 		emailUsecase: emailUsecase,
 	}

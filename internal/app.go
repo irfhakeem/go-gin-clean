@@ -1,8 +1,8 @@
 package internal
 
 import (
-	"go-gin-clean/internal/application/port/outbound"
-	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/domain/gateway"
+	"go-gin-clean/internal/usecase"
 	"go-gin-clean/internal/delivery/http"
 	"go-gin-clean/internal/domain/permission"
 	"go-gin-clean/internal/domain/policy"
@@ -22,8 +22,8 @@ import (
 
 type App struct {
 	Checker        permission.Checker
-	Token          outbound.TokenMaker
-	Publisher      outbound.Publisher
+	Token          gateway.TokenMaker
+	Publisher      gateway.Publisher
 	UserHandler    *http.UserHandler
 	AuthHandler    *http.AuthHandler
 	OutboxWorker   *worker.OutboxWorker
