@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"go-gin-clean/internal/application/port/inbound"
-	"go-gin-clean/internal/application/port/outbound"
+	"go-gin-clean/internal/domain/gateway"
+	"go-gin-clean/internal/domain/repository"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/internal/dto"
 	"go-gin-clean/internal/dto/event"
@@ -19,32 +19,41 @@ import (
 	"go.uber.org/zap"
 )
 
-type AuthUseCase = inbound.AuthUseCase
+type AuthUseCase interface {
+	Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error)
+	Register(ctx context.Context, req *dto.RegisterRequest) error
+	RefreshToken(ctx context.Context, hashedRefreshToken string) (*dto.RefreshTokenResponse, error)
+	Logout(ctx context.Context, id string) error
+	SendVerifyEmail(ctx context.Context, req *dto.SendVerifyEmailRequest) error
+	VerifyEmail(ctx context.Context, token string) error
+	SendResetPassword(ctx context.Context, req *dto.SendResetPasswordRequest) error
+	ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error
+}
 
-var _ inbound.AuthUseCase = (*authUseCase)(nil)
+var _ AuthUseCase = (*authUseCase)(nil)
 
 type authUseCase struct {
-	txManager        outbound.TransactionManager
-	userRepo         outbound.UserRepository
-	refreshTokenRepo outbound.RefreshTokenRepository
-	outboxUseCase    inbound.OutboxUseCase
+	txManager        repository.TransactionManager
+	userRepo         repository.UserRepository
+	refreshTokenRepo repository.RefreshTokenRepository
+	outboxUseCase    OutboxUseCase
 
-	jwt       outbound.TokenMaker
-	hasher    outbound.Hasher
-	encryptor outbound.Encryptor
+	jwt       gateway.TokenMaker
+	hasher    gateway.Hasher
+	encryptor gateway.Encryptor
 	cfg       *config.ServerConfig
 }
 
 func NewAuthUseCase(
-	txManager outbound.TransactionManager,
-	userRepo outbound.UserRepository,
-	refreshTokenRepo outbound.RefreshTokenRepository,
-	outboxUseCase inbound.OutboxUseCase,
-	jwt outbound.TokenMaker,
-	hasher outbound.Hasher,
-	encryptor outbound.Encryptor,
+	txManager repository.TransactionManager,
+	userRepo repository.UserRepository,
+	refreshTokenRepo repository.RefreshTokenRepository,
+	outboxUseCase OutboxUseCase,
+	jwt gateway.TokenMaker,
+	hasher gateway.Hasher,
+	encryptor gateway.Encryptor,
 	cfg *config.ServerConfig,
-) inbound.AuthUseCase {
+) AuthUseCase {
 	return &authUseCase{
 		txManager:        txManager,
 		userRepo:         userRepo,

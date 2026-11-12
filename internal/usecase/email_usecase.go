@@ -3,24 +3,26 @@ package usecase
 import (
 	"fmt"
 
-	"go-gin-clean/internal/application/port/inbound"
-	"go-gin-clean/internal/application/port/outbound"
+	"go-gin-clean/internal/domain/gateway"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
 
 	"go.uber.org/zap"
 )
 
-type EmailUseCase = inbound.EmailUseCase
+type EmailUseCase interface {
+	SendVerifyEmail(to, name, url string) error
+	SendResetPasswordEmail(to, name, url string) error
+}
 
-var _ inbound.EmailUseCase = (*emailUseCase)(nil)
+var _ EmailUseCase = (*emailUseCase)(nil)
 
 type emailUseCase struct {
-	mailer outbound.Mailer
+	mailer gateway.Mailer
 	cfg    *config.ServerConfig
 }
 
-func NewEmailUseCase(mailer outbound.Mailer, cfg *config.ServerConfig) inbound.EmailUseCase {
+func NewEmailUseCase(mailer gateway.Mailer, cfg *config.ServerConfig) EmailUseCase {
 	return &emailUseCase{
 		mailer: mailer,
 		cfg:    cfg,
