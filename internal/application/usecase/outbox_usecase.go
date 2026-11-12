@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/application/port/inbound"
+	"go-gin-clean/internal/application/port/outbound"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
@@ -13,23 +14,21 @@ import (
 	"go.uber.org/zap"
 )
 
-type OutboxUseCase interface {
-	SaveOutboxMessage(ctx context.Context, aggregateType, aggregateID, eventType string, payload any) error
-	ProcessBatch(ctx context.Context, limit int) error
-	ResetStuck(ctx context.Context, stuckDuration time.Duration) error
-}
+type OutboxUseCase = inbound.OutboxUseCase
+
+var _ inbound.OutboxUseCase = (*outboxUseCase)(nil)
 
 type outboxUseCase struct {
-	outboxRepo port.OutboxRepository
-	publisher  port.Publisher
+	outboxRepo outbound.OutboxRepository
+	publisher  outbound.Publisher
 	cfg        *config.RabbitMQConfig
 }
 
 func NewOutboxUseCase(
-	outboxRepo port.OutboxRepository,
-	publisher port.Publisher,
+	outboxRepo outbound.OutboxRepository,
+	publisher outbound.Publisher,
 	cfg *config.RabbitMQConfig,
-) OutboxUseCase {
+) inbound.OutboxUseCase {
 	return &outboxUseCase{
 		outboxRepo: outboxRepo,
 		publisher:  publisher,

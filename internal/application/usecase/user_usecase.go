@@ -9,7 +9,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/application/port/inbound"
+	"go-gin-clean/internal/application/port/outbound"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/internal/domain/policy"
 	"go-gin-clean/internal/dto"
@@ -24,41 +25,35 @@ import (
 	"github.com/google/uuid"
 )
 
-type UserUseCase interface {
-	GetAllUsers(ctx context.Context, actor policy.Actor, query *dto.GetAllUserQuery, offset int) (*dto.PaginationResponse[dto.UserInfo], error)
-	GetUserByID(ctx context.Context, actor policy.Actor, id string) (*dto.UserInfo, error)
-	CreateUser(ctx context.Context, actor policy.Actor, req *dto.CreateUserRequest) (*dto.UserInfo, error)
-	UpdateUser(ctx context.Context, actor policy.Actor, id string, req *dto.UpdateUserRequest) (*dto.UserInfo, error)
-	ChangePassword(ctx context.Context, actor policy.Actor, userID string, req *dto.ChangePasswordRequest) error
-	ChangeStatus(ctx context.Context, actor policy.Actor, id string, req *dto.ChangeUserStatusRequest) error
-	DeleteUser(ctx context.Context, actor policy.Actor, id string) error
-}
+type UserUseCase = inbound.UserUseCase
+
+var _ inbound.UserUseCase = (*userUseCase)(nil)
 
 type userUseCase struct {
 	policy    policy.UserPolicy
-	txManager port.TransactionManager
+	txManager outbound.TransactionManager
 
-	userRepo         port.UserRepository
-	refreshTokenRepo port.RefreshTokenRepository
-	outboxUseCase    OutboxUseCase
-	hasher  port.Hasher
-	storage port.Storage
-	cache   port.Cache
+	userRepo         outbound.UserRepository
+	refreshTokenRepo outbound.RefreshTokenRepository
+	outboxUseCase    inbound.OutboxUseCase
+	hasher  outbound.Hasher
+	storage outbound.Storage
+	cache   outbound.Cache
 
 	cfg *config.ServerConfig
 }
 
 func NewUserUseCase(
 	policy policy.UserPolicy,
-	txManager port.TransactionManager,
-	userRepo port.UserRepository,
-	refreshTokenRepo port.RefreshTokenRepository,
-	outboxUseCase OutboxUseCase,
-	hasher port.Hasher,
-	storage port.Storage,
-	cache port.Cache,
+	txManager outbound.TransactionManager,
+	userRepo outbound.UserRepository,
+	refreshTokenRepo outbound.RefreshTokenRepository,
+	outboxUseCase inbound.OutboxUseCase,
+	hasher outbound.Hasher,
+	storage outbound.Storage,
+	cache outbound.Cache,
 	cfg *config.ServerConfig,
-) UserUseCase {
+) inbound.UserUseCase {
 	return &userUseCase{
 		policy:           policy,
 		txManager:        txManager,
@@ -116,7 +111,7 @@ func (u *userUseCase) GetAllUsers(ctx context.Context, actor policy.Actor, query
 		return dto.NewPaginationResponse([]dto.UserInfo{}, page, limit, 0), nil
 	}
 
-	params := port.FindAllUsersParams{
+	params := outbound.FindAllUsersParams{
 		Limit:    query.PerPage,
 		Offset:   offset,
 		Search:   query.Search,
