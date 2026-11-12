@@ -2,12 +2,12 @@ package worker
 
 import (
 	"context"
-	"go-gin-clean/internal/application/usecase"
+
+	"go-gin-clean/internal/application/port/inbound"
+	mq "go-gin-clean/internal/delivery/mq"
 	"go-gin-clean/internal/infrastructure/messaging/rabbitmq"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
-
-	mq "go-gin-clean/internal/delivery/mq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
@@ -17,12 +17,12 @@ type ConsumerWorker struct {
 	conn        *amqp.Connection
 	reconnectCh chan *amqp.Connection
 
-	emailUsecase usecase.EmailUseCase
+	emailUsecase inbound.EmailUseCase
 
 	cfg *config.RabbitMQConfig
 }
 
-func NewConsumerWorker(conn *amqp.Connection, emailUsecase usecase.EmailUseCase, cfg *config.RabbitMQConfig) *ConsumerWorker {
+func NewConsumerWorker(conn *amqp.Connection, emailUsecase inbound.EmailUseCase, cfg *config.RabbitMQConfig) *ConsumerWorker {
 	return &ConsumerWorker{
 		cfg:          cfg,
 		conn:         conn,

@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/application/port/inbound"
 	"go-gin-clean/internal/delivery/http/response"
 	"go-gin-clean/internal/domain/policy"
 	"go-gin-clean/internal/dto"
@@ -14,10 +14,10 @@ import (
 )
 
 type UserHandler struct {
-	userUseCase usecase.UserUseCase
+	userUseCase inbound.UserUseCase
 }
 
-func NewUserHandler(userUseCase usecase.UserUseCase) *UserHandler {
+func NewUserHandler(userUseCase inbound.UserUseCase) *UserHandler {
 	return &UserHandler{
 		userUseCase: userUseCase,
 	}
