@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/application/port/outbound"
 	"go-gin-clean/pkg/config"
 
 	"github.com/cloudinary/cloudinary-go/v2"
@@ -19,7 +19,7 @@ type CloudinaryStorage struct {
 	cfg *config.CloudinaryConfig
 }
 
-func NewCloudinaryStorage(cfg *config.CloudinaryConfig) port.Storage {
+func NewCloudinaryStorage(cfg *config.CloudinaryConfig) outbound.Storage {
 	return &CloudinaryStorage{cfg: cfg}
 }
 

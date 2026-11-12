@@ -1,7 +1,7 @@
 package security
 
 import (
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/application/port/outbound"
 	"go-gin-clean/internal/domain/auth"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/errors"
@@ -36,7 +36,7 @@ type refreshJWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-func NewJWTMaker(cfg *config.JWTConfig) port.TokenMaker {
+func NewJWTMaker(cfg *config.JWTConfig) outbound.TokenMaker {
 	return &JWTMaker{cfg: cfg}
 }
 

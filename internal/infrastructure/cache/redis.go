@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/application/port/outbound"
 	"go-gin-clean/pkg/config"
 	pkgerrors "go-gin-clean/pkg/errors"
 	"go-gin-clean/pkg/message"
@@ -18,7 +18,7 @@ type redisCache struct {
 	client *redis.Client
 }
 
-func NewRedisCache(client *redis.Client, cfg *config.RedisConfig) port.Cache {
+func NewRedisCache(client *redis.Client, cfg *config.RedisConfig) outbound.Cache {
 	return &redisCache{cfg: cfg, client: client}
 }
 

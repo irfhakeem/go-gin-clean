@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/application/port/outbound"
 	"go-gin-clean/pkg/logger"
 
 	pkgerrors "go-gin-clean/pkg/errors"
@@ -33,7 +33,7 @@ type consumer struct {
 	handlers map[string]EventHandlerFunc
 }
 
-func NewConsumer(conn *amqp.Connection, exchange string, handlers map[string]EventHandlerFunc) port.Consumer {
+func NewConsumer(conn *amqp.Connection, exchange string, handlers map[string]EventHandlerFunc) outbound.Consumer {
 	return &consumer{
 		conn:     conn,
 		exchange: exchange,

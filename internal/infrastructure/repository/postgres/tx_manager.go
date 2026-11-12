@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/application/port/outbound"
 
 	"gorm.io/gorm"
 )
@@ -16,7 +16,7 @@ type gormTxManager struct {
 	db *gorm.DB
 }
 
-func NewGormTransactionManager(db *gorm.DB) port.TransactionManager {
+func NewGormTransactionManager(db *gorm.DB) outbound.TransactionManager {
 	return &gormTxManager{db: db}
 }
 
