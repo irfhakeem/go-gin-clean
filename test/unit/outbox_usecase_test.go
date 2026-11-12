@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/usecase"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"

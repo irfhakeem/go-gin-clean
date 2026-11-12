@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/usecase"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/internal/domain/policy"
 	"go-gin-clean/internal/domain/vo"

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"go-gin-clean/internal/application/port/outbound"
+	"go-gin-clean/internal/domain/repository"
 	"go-gin-clean/internal/domain/entity"
 
 	"github.com/google/uuid"
@@ -61,7 +61,7 @@ func NewMockUserRepository() *MockUserRepository {
 	}
 }
 
-func (m *MockUserRepository) FindAll(ctx context.Context, params outbound.FindAllUsersParams) ([]*entity.User, int64, error) {
+func (m *MockUserRepository) FindAll(ctx context.Context, params repository.FindAllUsersParams) ([]*entity.User, int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.FindErr != nil {
