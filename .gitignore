@@ -6,8 +6,10 @@ docs/*
 !docs/architecture/
 docs/architecture/*
 !docs/architecture/*/
+!docs/architecture/index.html
 docs/architecture/*/*
 !docs/architecture/*/*.html
+!docs/architecture/*/candidate.json
 
 scannerwork/
 

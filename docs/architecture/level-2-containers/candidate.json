@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Level 2: Containers & Runtime Processes",
+    "output": "docs/architecture/level-2-containers/level-2-containers.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/irfhakeem/go-gin-clean.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "223a1d934919f836aed5caa03f8c9b5d808d2394"
+    },
+    "views": [
+      {
+        "id": "sync_http",
+        "label": "Synchronous HTTP Container",
+        "focus": ["api_client", "gin_http", "redis_container", "cloudinary_api", "postgres_container"],
+        "note": "Gin HTTP server handles REST calls, caches reads in Redis, uploads avatars to Cloudinary, and commits ACID transactions in PostgreSQL."
+      },
+      {
+        "id": "outbox_pipeline",
+        "label": "Async Outbox & Consumer Pipeline",
+        "focus": ["postgres_container", "outbox_worker", "rabbitmq_container", "consumer_worker", "smtp_relay"],
+        "note": "OutboxWorker polls pending rows every 5s with FOR UPDATE SKIP LOCKED, publishes to RabbitMQ, and ConsumerWorker sends SMTP emails."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "api_client",
+      "type": "external",
+      "label": "HTTP Client",
+      "sublabel": "REST JSON / Cookie",
+      "icon": "person",
+      "pos": [40, 190],
+      "size": [140, 60],
+      "sources": [
+        { "path": "internal/delivery/http/route/route.go", "line": 27, "end_line": 66, "label": "API v1 Route Group" }
+      ]
+    },
+    {
+      "id": "migrate_cli",
+      "type": "backend",
+      "label": "Migration CLI",
+      "sublabel": "cmd/migrate (golang-migrate)",
+      "pos": [40, 340],
+      "size": [150, 60],
+      "sources": [
+        { "path": "cmd/migrate/main.go", "line": 22, "end_line": 60, "label": "Migration CLI Entrypoint" }
+      ]
+    },
+    {
+      "id": "gin_http",
+      "type": "backend",
+      "label": "Gin HTTP Server",
+      "sublabel": "cmd/server :3000",
+      "tag": "Go 1.24",
+      "pos": [320, 188],
+      "size": [155, 64],
+      "sources": [
+        { "path": "cmd/server/main.go", "line": 85, "end_line": 106, "label": "Gin HTTP Server Lifecycle" }
+      ]
+    },
+    {
+      "id": "redis_container",
+      "type": "database",
+      "label": "Redis 7 Alpine",
+      "sublabel": "go-redis/v9 :6379",
+      "pos": [322, 40],
+      "size": [150, 60],
+      "sources": [
+        { "path": "docker-compose.yml", "line": 27, "end_line": 43, "label": "Redis Container Service" },
+        { "path": "pkg/connection/redis.go", "line": 12, "end_line": 25, "label": "Redis Client Connection" }
+      ]
+    },
+    {
+      "id": "cloudinary_api",
+      "type": "cloud",
+      "label": "Cloudinary API",
+      "sublabel": "cloudinary-go/v2",
+      "pos": [600, 40],
+      "size": [155, 60],
+      "sources": [
+        { "path": "internal/infrastructure/storage/cloudinary.go", "line": 22, "end_line": 65, "label": "Cloudinary SDK Uploader" }
+      ]
+    },
+    {
+      "id": "postgres_container",
+      "type": "database",
+      "label": "PostgreSQL 16",
+      "sublabel": "GORM + pgx :5432",
+      "pos": [600, 250],
+      "size": [155, 64],
+      "sources": [
+        { "path": "docker-compose.yml", "line": 5, "end_line": 25, "label": "Postgres Container Service" },
+        { "path": "pkg/connection/postgres.go", "line": 11, "end_line": 36, "label": "GORM Postgres Pool" }
+      ]
+    },
+    {
+      "id": "outbox_worker",
+      "type": "backend",
+      "label": "Outbox Worker",
+      "sublabel": "5s Ticker Goroutine",
+      "pos": [600, 420],
+      "size": [155, 60],
+      "sources": [
+        { "path": "cmd/server/main.go", "line": 57, "end_line": 61, "label": "Outbox Worker Goroutine" },
+        { "path": "internal/delivery/worker/outbox_worker.go", "line": 35, "end_line": 66, "label": "Outbox Polling Loop" }
+      ]
+    },
+    {
+      "id": "rabbitmq_container",
+      "type": "messagebus",
+      "label": "RabbitMQ 3",
+      "sublabel": "amqp091-go :5672",
+      "pos": [890, 420],
+      "size": [155, 60],
+      "sources": [
+        { "path": "docker-compose.yml", "line": 45, "end_line": 63, "label": "RabbitMQ Container Service" },
+        { "path": "pkg/connection/rabbitmq.go", "line": 15, "end_line": 64, "label": "RabbitMQ Auto-Reconnect" }
+      ]
+    },
+    {
+      "id": "consumer_worker",
+      "type": "backend",
+      "label": "Consumer Worker",
+      "sublabel": "AMQP QoS=1 Goroutine",
+      "pos": [890, 252],
+      "size": [155, 60],
+      "sources": [
+        { "path": "cmd/server/main.go", "line": 63, "end_line": 67, "label": "Consumer Worker Goroutine" },
+        { "path": "internal/delivery/worker/consumer_worker.go", "line": 38, "end_line": 74, "label": "Consumer Engine & Reconnect" }
+      ]
+    },
+    {
+      "id": "smtp_relay",
+      "type": "external",
+      "label": "SMTP Server",
+      "sublabel": "gomail.v2 :587",
+      "pos": [890, 80],
+      "size": [155, 60],
+      "sources": [
+        { "path": "internal/infrastructure/mailer/smtp.go", "line": 27, "end_line": 51, "label": "SMTP Mailer Adapter" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "cmd/server Process (Single Binary Runtime)",
+      "wraps": ["gin_http", "outbox_worker", "consumer_worker"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-to-gin",
+      "from": "api_client",
+      "to": "gin_http",
+      "label": "REST /api/v1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gin-to-redis",
+      "from": "gin_http",
+      "to": "redis_container",
+      "label": "GET / SETEX / DEL",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "gin-to-cloudinary",
+      "from": "gin_http",
+      "to": "cloudinary_api",
+      "label": "HTTPS multipart",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "gin-to-postgres",
+      "from": "gin_http",
+      "to": "postgres_container",
+      "label": "SQL WithTx",
+      "variant": "emphasis"
+    },
+    {
+      "id": "migrate-to-postgres",
+      "from": "migrate_cli",
+      "to": "postgres_container",
+      "label": "DDL migrations/*.sql",
+      "variant": "dashed"
+    },
+    {
+      "id": "outbox-to-postgres",
+      "from": "outbox_worker",
+      "to": "postgres_container",
+      "label": "SKIP LOCKED poll",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "outbox-to-rabbit",
+      "from": "outbox_worker",
+      "to": "rabbitmq_container",
+      "label": "AMQP publish",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rabbit-to-consumer",
+      "from": "rabbitmq_container",
+      "to": "consumer_worker",
+      "label": "consume + retry/DLQ",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "consumer-to-smtp",
+      "from": "consumer_worker",
+      "to": "smtp_relay",
+      "label": "SMTP DialAndSend",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Single-Binary Process Model",
+      "items": [
+        "cmd/server starts Gin HTTP Server, OutboxWorker, ConsumerWorker, and WatchRabbitMQ in coordinated goroutines",
+        "Graceful shutdown on SIGINT/SIGTERM drains HTTP traffic before waiting on worker WaitGroup and closing DB/Redis/AMQP"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Docker Compose Infrastructure",
+      "items": [
+        "postgres:16-alpine (:5432), redis:7-alpine (:6379), and rabbitmq:3-management-alpine (:5672/:15672)",
+        "cmd/migrate applies versioned plain-SQL DDL migrations (enums, users, refresh_tokens, outbox_messages)"
+      ]
+    }
+  ]
+}

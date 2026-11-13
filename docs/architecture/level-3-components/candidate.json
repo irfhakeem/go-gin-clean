@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Level 3: Internal Components (Clean Architecture Layers)",
+    "output": "docs/architecture/level-3-components/level-3-components.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/irfhakeem/go-gin-clean.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "223a1d934919f836aed5caa03f8c9b5d808d2394"
+    },
+    "views": [
+      {
+        "id": "auth_component_slice",
+        "label": "Authentication & Session Slice",
+        "focus": ["http_middleware", "http_handlers", "auth_usecase", "security_adapters", "postgres_repos", "domain_entities"],
+        "note": "AuthHandler delegates to AuthUseCase, which coordinates JWT/Bcrypt/AES security adapters and GORM repositories inside WithTx."
+      },
+      {
+        "id": "user_rbac_slice",
+        "label": "User Management & RBAC Policy Slice",
+        "focus": ["http_middleware", "http_handlers", "user_usecase", "domain_rbac_policy", "postgres_repos", "cache_storage_adapters"],
+        "note": "RequireRole enforces coarse RBAC at the route edge; UserUseCase enforces UserPolicy data scoping and Redis cache-aside."
+      },
+      {
+        "id": "async_outbox_slice",
+        "label": "Transactional Outbox & Email Slice",
+        "focus": ["auth_usecase", "outbox_email_uc", "mq_handlers", "postgres_repos", "mq_smtp_adapters"],
+        "note": "AuthUseCase writes outbox rows in-transaction; OutboxUseCase publishes to RabbitMQ and EmailEventHandler triggers SMTP delivery."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "http_middleware",
+      "type": "security",
+      "label": "HTTP Middleware",
+      "sublabel": "RequestID, CORS, RateLimit, JWT, RBAC",
+      "tag": "Delivery 3",
+      "pos": [40, 20],
+      "size": [175, 62],
+      "sources": [
+        { "path": "internal/delivery/http/middleware/auth.go", "line": 19, "end_line": 67, "label": "JWT AuthMiddleware" },
+        { "path": "internal/delivery/http/middleware/rbac.go", "line": 14, "end_line": 31, "label": "RequireRole Middleware" },
+        { "path": "internal/delivery/http/middleware/rate_limit.go", "line": 23, "end_line": 52, "label": "Token-Bucket RateLimiter" }
+      ]
+    },
+    {
+      "id": "http_handlers",
+      "type": "frontend",
+      "label": "REST HTTP Handlers",
+      "sublabel": "AuthHandler & UserHandler",
+      "tag": "Delivery 3",
+      "pos": [40, 155],
+      "size": [175, 62],
+      "sources": [
+        { "path": "internal/delivery/http/auth_handler.go", "line": 19, "end_line": 151, "label": "AuthHandler Endpoints" },
+        { "path": "internal/delivery/http/user_handler.go", "line": 20, "end_line": 215, "label": "UserHandler Endpoints" }
+      ]
+    },
+    {
+      "id": "mq_handlers",
+      "type": "messagebus",
+      "label": "MQ Event Handlers & Workers",
+      "sublabel": "EmailEventHandler + Workers",
+      "tag": "Delivery 3",
+      "pos": [40, 420],
+      "size": [175, 62],
+      "sources": [
+        { "path": "internal/delivery/mq/email_handler.go", "line": 18, "end_line": 44, "label": "AMQP Email Event Handler" },
+        { "path": "internal/delivery/worker/outbox_worker.go", "line": 26, "end_line": 66, "label": "Outbox Dispatcher Worker" },
+        { "path": "internal/delivery/worker/consumer_worker.go", "line": 25, "end_line": 75, "label": "AMQP Consumer Loop Worker" }
+      ]
+    },
+    {
+      "id": "domain_rbac_policy",
+      "type": "security",
+      "label": "Domain Policy & Contracts",
+      "sublabel": "Checker, Policy, Repos & Gateways",
+      "tag": "Domain 1",
+      "pos": [360, 20],
+      "size": [175, 60],
+      "sources": [
+        { "path": "internal/domain/permission/checker.go", "line": 8, "end_line": 37, "label": "Role Permission Checker" },
+        { "path": "internal/domain/policy/user_policy.go", "line": 7, "end_line": 35, "label": "UserPolicy Data Scoping" },
+        { "path": "internal/domain/repository/repository.go", "line": 27, "end_line": 54, "label": "Domain Repository Interfaces" }
+      ]
+    },
+    {
+      "id": "auth_usecase",
+      "type": "backend",
+      "label": "AuthUseCase",
+      "sublabel": "Login, Register, Refresh, Verify",
+      "tag": "UseCase 2",
+      "pos": [360, 290],
+      "size": [175, 64],
+      "sources": [
+        { "path": "internal/usecase/auth_usecase.go", "line": 22, "end_line": 335, "label": "AuthUseCase Interactor" }
+      ]
+    },
+    {
+      "id": "user_usecase",
+      "type": "backend",
+      "label": "UserUseCase",
+      "sublabel": "CRUD, Password, Status, Avatar",
+      "tag": "UseCase 2",
+      "pos": [360, 155],
+      "size": [175, 64],
+      "sources": [
+        { "path": "internal/usecase/user_usecase.go", "line": 28, "end_line": 380, "label": "UserUseCase Interactor" }
+      ]
+    },
+    {
+      "id": "outbox_email_uc",
+      "type": "backend",
+      "label": "Outbox & Email UseCases",
+      "sublabel": "SaveOutbox, ProcessBatch, Send",
+      "tag": "UseCase 2",
+      "pos": [360, 420],
+      "size": [175, 64],
+      "sources": [
+        { "path": "internal/usecase/outbox_usecase.go", "line": 17, "end_line": 89, "label": "OutboxUseCase" },
+        { "path": "internal/usecase/email_usecase.go", "line": 13, "end_line": 60, "label": "EmailUseCase" }
+      ]
+    },
+    {
+      "id": "security_adapters",
+      "type": "security",
+      "label": "Security Adapters",
+      "sublabel": "JWTMaker, Bcrypt, AES-GCM",
+      "tag": "Infra 4",
+      "pos": [750, 165],
+      "size": [175, 62],
+      "sources": [
+        { "path": "internal/infrastructure/security/jwt.go", "line": 20, "end_line": 95, "label": "HS256 JWTMaker" },
+        { "path": "internal/infrastructure/security/aes.go", "line": 17, "end_line": 107, "label": "AES-256-GCM Encryptor" },
+        { "path": "internal/infrastructure/security/bcrypt.go", "line": 9, "end_line": 25, "label": "Bcrypt Hasher" }
+      ]
+    },
+    {
+      "id": "postgres_repos",
+      "type": "database",
+      "label": "Postgres Repositories",
+      "sublabel": "BaseRepo, User, Token, Outbox, Tx",
+      "tag": "Infra 4",
+      "pos": [750, 290],
+      "size": [175, 64],
+      "sources": [
+        { "path": "internal/infrastructure/repository/postgres/tx_manager.go", "line": 15, "end_line": 39, "label": "GormTransactionManager" },
+        { "path": "internal/infrastructure/repository/postgres/base_repository.go", "line": 17, "end_line": 102, "label": "Generic BaseRepository" },
+        { "path": "internal/infrastructure/repository/postgres/user_repository.go", "line": 12, "end_line": 72, "label": "PostgresUserRepository" }
+      ]
+    },
+    {
+      "id": "cache_storage_adapters",
+      "type": "cloud",
+      "label": "Cache & Storage Adapters",
+      "sublabel": "RedisCache & CloudinaryStorage",
+      "tag": "Infra 4",
+      "pos": [750, 35],
+      "size": [175, 62],
+      "sources": [
+        { "path": "internal/infrastructure/cache/redis.go", "line": 16, "end_line": 54, "label": "Redis Cache Adapter" },
+        { "path": "internal/infrastructure/storage/cloudinary.go", "line": 18, "end_line": 65, "label": "Cloudinary Storage Adapter" }
+      ]
+    },
+    {
+      "id": "mq_smtp_adapters",
+      "type": "messagebus",
+      "label": "RabbitMQ & SMTP Adapters",
+      "sublabel": "AMQP Publisher/Consumer + Gomail",
+      "tag": "Infra 4",
+      "pos": [750, 420],
+      "size": [175, 62],
+      "sources": [
+        { "path": "internal/infrastructure/messaging/rabbitmq/publisher.go", "line": 15, "end_line": 60, "label": "RabbitMQ Publisher" },
+        { "path": "internal/infrastructure/messaging/rabbitmq/consumer.go", "line": 27, "end_line": 105, "label": "RabbitMQ Consumer + DLX" },
+        { "path": "internal/infrastructure/mailer/smtp.go", "line": 22, "end_line": 73, "label": "SMTP HTML Template Mailer" }
+      ]
+    },
+    {
+      "id": "domain_entities",
+      "type": "backend",
+      "label": "Domain Entities & VOs",
+      "sublabel": "User, RefreshToken, Outbox, Role",
+      "tag": "Domain 1",
+      "pos": [1020, 292],
+      "size": [170, 60],
+      "sources": [
+        { "path": "internal/domain/entity/user.go", "line": 15, "end_line": 49, "label": "User Entity" },
+        { "path": "internal/domain/entity/refresh_token.go", "line": 10, "end_line": 34, "label": "RefreshToken & Outbox Entities" }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "mw-to-handlers",
+      "from": "http_middleware",
+      "to": "http_handlers",
+      "label": "actor + user_id ctx",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "mw-to-domain-policy",
+      "from": "http_middleware",
+      "to": "domain_rbac_policy",
+      "label": "RequireRole checks Checker",
+      "variant": "security"
+    },
+    {
+      "id": "handlers-to-user-uc",
+      "from": "http_handlers",
+      "to": "user_usecase",
+      "label": "delegates HTTP requests"
+    },
+    {
+      "id": "handlers-to-auth-uc",
+      "from": "http_handlers",
+      "to": "auth_usecase",
+      "label": "login / register / refresh"
+    },
+    {
+      "id": "user-uc-to-policy",
+      "from": "user_usecase",
+      "to": "domain_rbac_policy",
+      "label": "calls UserPolicy.Scope()",
+      "variant": "security"
+    },
+    {
+      "id": "auth-uc-to-security",
+      "from": "auth_usecase",
+      "to": "security_adapters",
+      "label": "calls gateway.TokenMaker/Hasher"
+    },
+    {
+      "id": "auth-uc-to-postgres",
+      "from": "auth_usecase",
+      "to": "postgres_repos",
+      "label": "calls repository.UserRepository/Tx"
+    },
+    {
+      "id": "auth-uc-to-outbox",
+      "from": "auth_usecase",
+      "to": "outbox_email_uc",
+      "label": "SaveOutboxMessage in-tx"
+    },
+    {
+      "id": "user-uc-to-postgres",
+      "from": "user_usecase",
+      "to": "postgres_repos",
+      "label": "calls repository.UserRepository"
+    },
+    {
+      "id": "user-uc-to-cache",
+      "from": "user_usecase",
+      "to": "cache_storage_adapters",
+      "label": "calls gateway.Cache / Storage"
+    },
+    {
+      "id": "outbox-uc-to-postgres",
+      "from": "outbox_email_uc",
+      "to": "postgres_repos",
+      "label": "FetchAndLockPending / Mark"
+    },
+    {
+      "id": "outbox-uc-to-mq",
+      "from": "outbox_email_uc",
+      "to": "mq_smtp_adapters",
+      "label": "calls gateway.Publisher/Mailer"
+    },
+    {
+      "id": "mq-handlers-to-outbox-uc",
+      "from": "mq_handlers",
+      "to": "outbox_email_uc",
+      "label": "invokes ProcessBatch / Email"
+    },
+    {
+      "id": "auth-uc-to-entities",
+      "from": "auth_usecase",
+      "to": "domain_entities",
+      "label": "creates domain models",
+      "variant": "emphasis"
+    },
+    {
+      "id": "repos-to-entities",
+      "from": "postgres_repos",
+      "to": "domain_entities",
+      "label": "maps GORM entities"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Inversion of Control (Clean Architecture)",
+      "items": [
+        "Repository (internal/domain/repository) and gateway (internal/domain/gateway) contracts live in the Domain layer",
+        "Use cases (internal/usecase) orchestrate domain rules and call domain contracts; infrastructure implements them",
+        "internal/app.go wires infrastructure into use cases and use cases into delivery handlers via constructor injection"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Two-Tier Authorization",
+      "items": [
+        "Tier 1 (Inbound Middleware): RequireRole checks coarse role permissions via permission.Checker",
+        "Tier 2 (Application + Domain): UserUseCase calls policy.UserPolicy.Scope(actor, action) for row-level scoping"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Context-Propagated Transactions",
+      "items": [
+        "gormTxManager.WithTx injects *gorm.DB into context (activeTxKey)",
+        "getTx(ctx, r.db) in BaseRepository, UserRepo, RefreshTokenRepo, and OutboxRepo automatically joins active transactions"
+      ]
+    }
+  ]
+}

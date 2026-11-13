@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Level 1: Go Gin Clean System Context",
+    "output": "docs/architecture/level-1-context/level-1-context.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/irfhakeem/go-gin-clean.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "223a1d934919f836aed5caa03f8c9b5d808d2394"
+    },
+    "views": [
+      {
+        "id": "api_path",
+        "label": "API & Persistence",
+        "focus": ["web_client", "admin_client", "go_gin_clean", "redis_cache", "postgres_db", "cloudinary_cdn"],
+        "note": "Synchronous REST requests authenticate via JWT and read/write PostgreSQL, Redis, and Cloudinary."
+      },
+      {
+        "id": "async_email",
+        "label": "Transactional Outbox Email",
+        "focus": ["go_gin_clean", "postgres_db", "rabbitmq_broker", "smtp_server"],
+        "note": "Verification and password-reset emails are persisted in PostgreSQL outbox, relayed via RabbitMQ, and sent via SMTP."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "web_client",
+      "type": "external",
+      "label": "End User Client",
+      "sublabel": "Web / Mobile HTTP",
+      "icon": "person",
+      "pos": [40, 170],
+      "size": [150, 60],
+      "sources": [
+        { "path": "internal/delivery/http/route/route.go", "line": 27, "end_line": 49, "label": "Public Auth & Profile Routes" }
+      ]
+    },
+    {
+      "id": "admin_client",
+      "type": "external",
+      "label": "Super Admin",
+      "sublabel": "RBAC User Management",
+      "icon": "person",
+      "pos": [40, 310],
+      "size": [150, 60],
+      "sources": [
+        { "path": "internal/delivery/http/route/route.go", "line": 50, "end_line": 60, "label": "RBAC Admin User Routes" }
+      ]
+    },
+    {
+      "id": "go_gin_clean",
+      "type": "backend",
+      "label": "Go Gin Clean API",
+      "sublabel": "REST + Workers :3000",
+      "tag": "Clean Arch",
+      "pos": [350, 238],
+      "size": [160, 64],
+      "sources": [
+        { "path": "cmd/server/main.go", "line": 24, "end_line": 107, "label": "Server & Worker Entrypoint" },
+        { "path": "internal/app.go", "line": 33, "end_line": 70, "label": "Dependency Injection Root" }
+      ]
+    },
+    {
+      "id": "redis_cache",
+      "type": "database",
+      "label": "Redis Cache",
+      "sublabel": "User Cache :6379",
+      "pos": [355, 70],
+      "size": [150, 60],
+      "sources": [
+        { "path": "internal/infrastructure/cache/redis.go", "line": 21, "end_line": 54, "label": "Redis Cache Adapter" }
+      ]
+    },
+    {
+      "id": "cloudinary_cdn",
+      "type": "cloud",
+      "label": "Cloudinary CDN",
+      "sublabel": "Avatar Storage",
+      "pos": [355, 410],
+      "size": [150, 60],
+      "sources": [
+        { "path": "internal/infrastructure/storage/cloudinary.go", "line": 35, "end_line": 65, "label": "Cloudinary Upload Adapter" }
+      ]
+    },
+    {
+      "id": "postgres_db",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "Users, Tokens, Outbox",
+      "pos": [690, 120],
+      "size": [160, 60],
+      "sources": [
+        { "path": "pkg/connection/postgres.go", "line": 11, "end_line": 36, "label": "GORM Postgres Connection" }
+      ]
+    },
+    {
+      "id": "rabbitmq_broker",
+      "type": "messagebus",
+      "label": "RabbitMQ",
+      "sublabel": "Topic Exchange + DLX",
+      "pos": [690, 240],
+      "size": [160, 60],
+      "sources": [
+        { "path": "internal/infrastructure/messaging/rabbitmq/consumer.go", "line": 36, "end_line": 74, "label": "AMQP Exchange & Queues" }
+      ]
+    },
+    {
+      "id": "smtp_server",
+      "type": "external",
+      "label": "SMTP Mail Server",
+      "sublabel": "Transactional Email :587",
+      "pos": [690, 360],
+      "size": [160, 60],
+      "sources": [
+        { "path": "internal/infrastructure/mailer/smtp.go", "line": 27, "end_line": 51, "label": "Gomail SMTP Dialer" }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-to-api",
+      "from": "web_client",
+      "to": "go_gin_clean",
+      "label": "HTTPS JSON + JWT",
+      "variant": "emphasis"
+    },
+    {
+      "id": "admin-to-api",
+      "from": "admin_client",
+      "to": "go_gin_clean",
+      "label": "HTTPS + RBAC",
+      "variant": "security"
+    },
+    {
+      "id": "api-to-redis",
+      "from": "go_gin_clean",
+      "to": "redis_cache",
+      "label": "cache-aside TTL 5m",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "api-to-cloudinary",
+      "from": "go_gin_clean",
+      "to": "cloudinary_cdn",
+      "label": "HTTPS avatar upload",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "api-to-postgres",
+      "from": "go_gin_clean",
+      "to": "postgres_db",
+      "label": "SQL / GORM Tx",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-to-rabbitmq",
+      "from": "go_gin_clean",
+      "to": "rabbitmq_broker",
+      "label": "AMQP 0-9-1 events",
+      "variant": "dashed"
+    },
+    {
+      "id": "api-to-smtp",
+      "from": "go_gin_clean",
+      "to": "smtp_server",
+      "label": "SMTP HTML email",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Actors & Entry",
+      "items": [
+        "End users register, verify email, log in, rotate refresh tokens, and manage their own profile",
+        "Super Admins manage all users under two-tier RBAC + Domain Policy scoping"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Data & Caching",
+      "items": [
+        "PostgreSQL stores users, AES-encrypted refresh tokens, and transactional outbox messages",
+        "Redis caches user reads (5m TTL) with graceful fallback to PostgreSQL on cache miss/error"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "External Integrations",
+      "items": [
+        "RabbitMQ brokers user.register and user.reset_password events with retry + dead-letter queues",
+        "SMTP delivers HTML verification/reset emails; Cloudinary stores profile avatars"
+      ]
+    }
+  ]
+}

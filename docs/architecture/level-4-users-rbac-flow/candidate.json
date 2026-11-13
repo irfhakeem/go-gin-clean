@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Level 4C: Two-Tier RBAC & Redis Cache-Aside User Flow",
+    "output": "docs/architecture/level-4-users-rbac-flow/level-4-users-rbac-flow.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "repository": {
+      "url": "https://github.com/irfhakeem/go-gin-clean.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "223a1d934919f836aed5caa03f8c9b5d808d2394"
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "HTTP Client",
+      "sublabel": "GET /api/v1/users",
+      "sources": [
+        { "path": "internal/delivery/http/route/route.go", "line": 50, "end_line": 60, "label": "Protected Users Routes" }
+      ]
+    },
+    {
+      "id": "middleware",
+      "type": "security",
+      "label": "AuthRBAC",
+      "sublabel": "auth.go & rbac.go",
+      "sources": [
+        { "path": "internal/delivery/http/middleware/auth.go", "line": 22, "end_line": 67, "label": "AuthMiddleware.RequireAuth" },
+        { "path": "internal/delivery/http/middleware/rbac.go", "line": 14, "end_line": 31, "label": "RequireRole(UserRead)" }
+      ]
+    },
+    {
+      "id": "user_handler",
+      "type": "frontend",
+      "label": "UserHandler",
+      "sublabel": "user_handler.go",
+      "sources": [
+        { "path": "internal/delivery/http/user_handler.go", "line": 88, "end_line": 111, "label": "UserHandler.GetAllUsers" }
+      ]
+    },
+    {
+      "id": "user_uc",
+      "type": "backend",
+      "label": "userUseCase",
+      "sublabel": "user_usecase.go",
+      "sources": [
+        { "path": "internal/usecase/user_usecase.go", "line": 100, "end_line": 153, "label": "userUseCase.GetAllUsers" },
+        { "path": "internal/domain/policy/user_policy.go", "line": 17, "end_line": 35, "label": "UserPolicy.Scope" }
+      ]
+    },
+    {
+      "id": "redis_cache",
+      "type": "database",
+      "label": "Redis Cache",
+      "sublabel": "redis.go",
+      "sources": [
+        { "path": "internal/infrastructure/cache/redis.go", "line": 25, "end_line": 34, "label": "redisCache.Get" },
+        { "path": "internal/infrastructure/cache/redis.go", "line": 48, "end_line": 54, "label": "redisCache.SetWithExpiration" }
+      ]
+    },
+    {
+      "id": "user_repo",
+      "type": "database",
+      "label": "UserRepo",
+      "sublabel": "user_repository.go",
+      "sources": [
+        { "path": "internal/infrastructure/repository/postgres/user_repository.go", "line": 24, "end_line": 72, "label": "PostgresUserRepository.FindAll" }
+      ]
+    }
+  ],
+  "segments": [
+    { "from": 150, "to": 265, "label": "1. Tier 1 Middleware: JWT & RBAC Permission" },
+    { "from": 285, "to": 565, "label": "2. Tier 2 Policy Scope & Redis Cache-Aside" }
+  ],
+  "messages": [
+    { "id": "u1", "from": "client", "to": "middleware", "y": 175, "label": "GET /users (Bearer JWT)", "variant": "emphasis" },
+    { "id": "u3", "from": "middleware", "to": "user_handler", "y": 235, "label": "RequireAuth + RequireRole", "variant": "security" },
+    { "id": "u4", "from": "user_handler", "to": "user_uc", "y": 300, "label": "GetAllUsers(ctx, actor)", "variant": "emphasis" },
+    { "id": "u5", "from": "user_uc", "to": "redis_cache", "y": 336, "label": "cache.Get(users:all:...)", "variant": "default" },
+    { "id": "u6", "from": "redis_cache", "to": "user_uc", "y": 372, "label": "ErrCacheMiss", "variant": "return" },
+    { "id": "u7", "from": "user_uc", "to": "user_repo", "y": 408, "label": "FindAll(scopedParams)", "variant": "emphasis" },
+    { "id": "u8", "from": "user_repo", "to": "user_uc", "y": 444, "label": "users[], totalCount", "variant": "return" },
+    { "id": "u9", "from": "user_uc", "to": "redis_cache", "y": 480, "label": "SetWithExpiration(5m)", "variant": "dashed" },
+    { "id": "u10", "from": "user_uc", "to": "user_handler", "y": 516, "label": "PaginationResponse", "variant": "return" },
+    { "id": "u11", "from": "user_handler", "to": "client", "y": 552, "label": "200 OK JSON + meta", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "middleware", "from": 175, "to": 245, "type": "security" },
+    { "participant": "user_handler", "from": 235, "to": 556, "type": "frontend" },
+    { "participant": "user_uc", "from": 300, "to": 520, "type": "backend" },
+    { "participant": "redis_cache", "from": 336, "to": 376, "type": "database" },
+    { "participant": "user_repo", "from": 408, "to": 448, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Two-Tier Access Control",
+      "items": [
+        "Tier 1: RequireRole checks permission.Checker (SuperAdmin & User both have UserRead)",
+        "Tier 2: UserPolicy.Scope returns ScopeAll for SuperAdmin and ScopeFiltered(actor.ID) for regular User"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Scoped Cache Key & SQL Injection Guard",
+      "items": [
+        "Cache key embeds actor.Role and actor.ID (users:all:<role>:<id>:...) to prevent cross-tenant cache poisoning",
+        "SanitizeSortColumn allow-lists sort columns (id, name, email, created_at, updated_at) before GORM Order()"
+      ]
+    }
+  ]
+}

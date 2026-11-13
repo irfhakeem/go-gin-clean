@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Level 4B: Login & Atomic Refresh Token Rotation Flow",
+    "output": "docs/architecture/level-4-login-refresh-flow/level-4-login-refresh-flow.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "repository": {
+      "url": "https://github.com/irfhakeem/go-gin-clean.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "223a1d934919f836aed5caa03f8c9b5d808d2394"
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "HTTP Client",
+      "sublabel": "Bearer + Cookie",
+      "sources": [
+        { "path": "internal/delivery/http/route/route.go", "line": 32, "end_line": 35, "label": "Login & Refresh Routes" }
+      ]
+    },
+    {
+      "id": "auth_handler",
+      "type": "frontend",
+      "label": "AuthHandler",
+      "sublabel": "auth_handler.go",
+      "sources": [
+        { "path": "internal/delivery/http/auth_handler.go", "line": 25, "end_line": 76, "label": "Login & RefreshToken Handlers" }
+      ]
+    },
+    {
+      "id": "auth_uc",
+      "type": "backend",
+      "label": "authUseCase",
+      "sublabel": "auth_usecase.go",
+      "sources": [
+        { "path": "internal/usecase/auth_usecase.go", "line": 69, "end_line": 108, "label": "authUseCase.Login" },
+        { "path": "internal/usecase/auth_usecase.go", "line": 153, "end_line": 203, "label": "authUseCase.RefreshToken" }
+      ]
+    },
+    {
+      "id": "security",
+      "type": "security",
+      "label": "Security",
+      "sublabel": "Bcrypt, JWT, AES-GCM",
+      "sources": [
+        { "path": "internal/infrastructure/security/jwt.go", "line": 43, "end_line": 162, "label": "JWTMaker Generate & Validate" },
+        { "path": "internal/infrastructure/security/aes.go", "line": 27, "end_line": 56, "label": "AESEncryptor Internal GCM" }
+      ]
+    },
+    {
+      "id": "tx_repos",
+      "type": "database",
+      "label": "PostgresTx",
+      "sublabel": "user & refresh_token",
+      "sources": [
+        { "path": "internal/infrastructure/repository/postgres/refresh_token_repository.go", "line": 21, "end_line": 45, "label": "PostgresRefreshTokenRepository" },
+        { "path": "internal/infrastructure/repository/postgres/tx_manager.go", "line": 23, "end_line": 39, "label": "gormTxManager.WithTx" }
+      ]
+    }
+  ],
+  "segments": [
+    { "from": 150, "to": 380, "label": "1. POST /api/v1/auth/login" },
+    { "from": 400, "to": 635, "label": "2. POST /api/v1/auth/refresh-token (Atomic WithTx)" }
+  ],
+  "messages": [
+    { "id": "l1", "from": "client", "to": "auth_handler", "y": 165, "label": "POST /auth/login", "variant": "emphasis" },
+    { "id": "l2", "from": "auth_handler", "to": "auth_uc", "y": 200, "label": "Login(ctx, req)", "variant": "emphasis" },
+    { "id": "l3", "from": "auth_uc", "to": "tx_repos", "y": 235, "label": "userRepo.FindByEmail", "variant": "default" },
+    { "id": "l4", "from": "auth_uc", "to": "security", "y": 270, "label": "Bcrypt + JWT + AES-GCM", "variant": "security" },
+    { "id": "l5", "from": "auth_uc", "to": "tx_repos", "y": 305, "label": "refreshTokenRepo.Save", "variant": "emphasis" },
+    { "id": "l6", "from": "auth_uc", "to": "auth_handler", "y": 340, "label": "LoginResponse", "variant": "return" },
+    { "id": "l7", "from": "auth_handler", "to": "client", "y": 372, "label": "200 OK + Cookie", "variant": "return" },
+    { "id": "r1", "from": "client", "to": "auth_handler", "y": 415, "label": "POST /auth/refresh-token", "variant": "emphasis" },
+    { "id": "r2", "from": "auth_handler", "to": "auth_uc", "y": 450, "label": "RefreshToken(ctx, cookie)", "variant": "emphasis" },
+    { "id": "r3", "from": "auth_uc", "to": "security", "y": 485, "label": "Decrypt + ValidateJWT", "variant": "security" },
+    { "id": "r4", "from": "auth_uc", "to": "tx_repos", "y": 520, "label": "IsTokenValid + FindByID", "variant": "default" },
+    { "id": "r5", "from": "auth_uc", "to": "tx_repos", "y": 555, "label": "WithTx: Revoke + Save", "variant": "emphasis" },
+    { "id": "r6", "from": "tx_repos", "to": "auth_uc", "y": 590, "label": "COMMIT rotated token", "variant": "return" },
+    { "id": "r7", "from": "auth_handler", "to": "client", "y": 625, "label": "200 OK + New Cookie", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "auth_handler", "from": 165, "to": 376, "type": "frontend" },
+    { "participant": "auth_uc", "from": 200, "to": 344, "type": "backend" },
+    { "participant": "auth_handler", "from": 415, "to": 628, "type": "frontend" },
+    { "participant": "auth_uc", "from": 450, "to": 600, "type": "backend" },
+    { "participant": "tx_repos", "from": 520, "to": 594, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Defense-in-Depth Token Storage",
+      "items": [
+        "Refresh tokens are signed HS256 JWTs encrypted with AES-256-GCM (random 12-byte nonce) before being stored in cookie and DB",
+        "Cookie uses HttpOnly, SameSite=Strict, and automatic Secure flag on HTTPS/ReleaseMode"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Atomic Token Rotation",
+      "items": [
+        "RefreshToken wraps RevokeByToken(txCtx) and Save(txCtx) inside gormTxManager.WithTx",
+        "If saving the new refresh token fails, revoking the old token rolls back so the user session is not lost"
+      ]
+    }
+  ]
+}

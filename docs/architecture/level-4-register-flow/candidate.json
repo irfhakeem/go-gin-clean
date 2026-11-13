@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Level 4A: Register & Transactional Outbox Runtime Flow",
+    "output": "docs/architecture/level-4-register-flow/level-4-register-flow.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "repository": {
+      "url": "https://github.com/irfhakeem/go-gin-clean.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "223a1d934919f836aed5caa03f8c9b5d808d2394"
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "HTTP Client",
+      "sublabel": "POST /auth/register",
+      "sources": [
+        { "path": "internal/delivery/http/route/route.go", "line": 29, "end_line": 39, "label": "Auth Route Group" }
+      ]
+    },
+    {
+      "id": "auth_handler",
+      "type": "frontend",
+      "label": "AuthHandler",
+      "sublabel": "auth_handler.go",
+      "sources": [
+        { "path": "internal/delivery/http/auth_handler.go", "line": 45, "end_line": 58, "label": "AuthHandler.Register" }
+      ]
+    },
+    {
+      "id": "auth_uc",
+      "type": "backend",
+      "label": "authUseCase",
+      "sublabel": "auth_usecase.go",
+      "sources": [
+        { "path": "internal/usecase/auth_usecase.go", "line": 110, "end_line": 151, "label": "authUseCase.Register" }
+      ]
+    },
+    {
+      "id": "tx_repos",
+      "type": "database",
+      "label": "PostgresTx",
+      "sublabel": "tx_manager + repos",
+      "sources": [
+        { "path": "internal/infrastructure/repository/postgres/tx_manager.go", "line": 23, "end_line": 39, "label": "gormTxManager.WithTx" },
+        { "path": "internal/infrastructure/repository/postgres/outbox_repository.go", "line": 21, "end_line": 57, "label": "PostgresOutboxRepository" }
+      ]
+    },
+    {
+      "id": "outbox_worker",
+      "type": "backend",
+      "label": "OutboxWorker",
+      "sublabel": "outbox_usecase.go",
+      "sources": [
+        { "path": "internal/delivery/worker/outbox_worker.go", "line": 35, "end_line": 66, "label": "OutboxWorker.Run" },
+        { "path": "internal/usecase/outbox_usecase.go", "line": 39, "end_line": 70, "label": "OutboxUseCase.ProcessBatch" }
+      ]
+    },
+    {
+      "id": "mq_smtp",
+      "type": "messagebus",
+      "label": "MQ & SMTP",
+      "sublabel": "email_handler + smtp",
+      "sources": [
+        { "path": "internal/delivery/mq/email_handler.go", "line": 24, "end_line": 33, "label": "HandleUserVerifyEmail" },
+        { "path": "internal/infrastructure/mailer/smtp.go", "line": 40, "end_line": 51, "label": "smtpMailer.SendEmail" }
+      ]
+    }
+  ],
+  "segments": [
+    { "from": 150, "to": 395, "label": "1. Synchronous Register + ACID WithTx" },
+    { "from": 415, "to": 615, "label": "2. Async Outbox Poll, RabbitMQ & SMTP" }
+  ],
+  "messages": [
+    { "id": "m1", "from": "client", "to": "auth_handler", "y": 165, "label": "POST /auth/register", "variant": "emphasis" },
+    { "id": "m2", "from": "auth_handler", "to": "auth_uc", "y": 200, "label": "Register(ctx, req)", "variant": "emphasis" },
+    { "id": "m3", "from": "auth_uc", "to": "tx_repos", "y": 235, "label": "ExistByEmail + Hash", "variant": "security" },
+    { "id": "m4", "from": "auth_uc", "to": "tx_repos", "y": 270, "label": "WithTx: userRepo.Create", "variant": "emphasis" },
+    { "id": "m5", "from": "auth_uc", "to": "tx_repos", "y": 305, "label": "WithTx: outboxRepo.Create", "variant": "emphasis" },
+    { "id": "m6", "from": "tx_repos", "to": "auth_uc", "y": 340, "label": "COMMIT user + outbox", "variant": "return" },
+    { "id": "m7", "from": "auth_uc", "to": "auth_handler", "y": 368, "label": "nil", "variant": "return" },
+    { "id": "m8", "from": "auth_handler", "to": "client", "y": 392, "label": "201 Created", "variant": "return" },
+    { "id": "m9", "from": "outbox_worker", "to": "tx_repos", "y": 430, "label": "FetchAndLockPending", "variant": "default" },
+    { "id": "m10", "from": "tx_repos", "to": "outbox_worker", "y": 465, "label": "pending batch", "variant": "return" },
+    { "id": "m11", "from": "outbox_worker", "to": "mq_smtp", "y": 500, "label": "Publish(user.register)", "variant": "dashed" },
+    { "id": "m12", "from": "outbox_worker", "to": "tx_repos", "y": 535, "label": "MarkPublished(pkid)", "variant": "default" },
+    { "id": "m13", "from": "mq_smtp", "to": "outbox_worker", "y": 570, "label": "Consume + LoadTemplate", "variant": "dashed" },
+    { "id": "m14", "from": "mq_smtp", "to": "client", "y": 605, "label": "SMTP SendVerifyEmail", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "auth_handler", "from": 165, "to": 395, "type": "frontend" },
+    { "participant": "auth_uc", "from": 200, "to": 370, "type": "backend" },
+    { "participant": "tx_repos", "from": 235, "to": 345, "type": "database" },
+    { "participant": "outbox_worker", "from": 428, "to": 540, "type": "backend" },
+    { "participant": "mq_smtp", "from": 500, "to": 608, "type": "messagebus" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Atomic User + Outbox Write",
+      "items": [
+        "gormTxManager.WithTx injects *gorm.DB into txCtx via activeTxKey",
+        "userRepo.Create(txCtx) and outboxRepo.Create(txCtx) share one Postgres transaction; if outbox insert fails, user creation rolls back"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "At-Least-Once Outbox Relay",
+      "items": [
+        "OutboxWorker ticks every 5s and locks up to 10 pending rows with FOR UPDATE SKIP LOCKED",
+        "ConsumerWorker consumes user.register with QoS=1, retries 4xx SMTP errors via .retry queue, and routes permanent failures to .dead"
+      ]
+    }
+  ]
+}

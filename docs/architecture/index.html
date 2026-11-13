@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Go Gin Clean — Multi-Level Architecture Index</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --frontend: #22d3ee;
+      --backend: #34d399;
+      --database: #fbbf24;
+      --cloud: #a78bfa;
+      --security: #fb7185;
+      --messagebus: #fb923c;
+      --external: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 40px 24px 64px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .container { max-width: 1080px; margin: 0 auto; }
+    header { margin-bottom: 36px; border-bottom: 1px solid var(--border); padding-bottom: 24px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .subtitle { color: var(--muted); margin: 0; font-size: 15px; }
+    .drilldown-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin: 20px 0 32px;
+      padding: 14px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    .drilldown-bar a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .drilldown-bar a:hover { text-decoration: underline; }
+    .legend {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 32px;
+    }
+    .legend h2 { margin: 0 0 12px; font-size: 17px; }
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px 18px;
+      font-size: 13.5px;
+    }
+    .badge {
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      border-radius: 3px;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    .level-section { margin-bottom: 36px; }
+    .level-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 14px;
+    }
+    .level-header h2 { margin: 0; font-size: 20px; color: var(--accent); }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+    }
+    .card h3 { margin: 0 0 8px; font-size: 18px; }
+    .card p { margin: 0 0 14px; color: var(--muted); font-size: 14.5px; }
+    .links { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 13.5px; }
+    .btn {
+      display: inline-block;
+      padding: 8px 14px;
+      background: #0284c7;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 7px;
+      font-weight: 600;
+    }
+    .btn:hover { background: #0369a1; }
+    .nav-link { color: var(--accent); text-decoration: none; }
+    .nav-link:hover { text-decoration: underline; }
+    code {
+      background: rgba(15, 23, 42, 0.7);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12.5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Go Gin Clean — 4-Level Architecture Visualization</h1>
+      <p class="subtitle">
+        Repository-backed C4 + runtime sequence diagrams pinned to commit
+        <code>223a1d934919f836aed5caa03f8c9b5d808d2394</code>
+      </p>
+      <div class="drilldown-bar">
+        <strong>Drill-Down Path:</strong>
+        <a href="#level-1">Level 1: System Context</a> &rarr;
+        <a href="#level-2">Level 2: Containers &amp; Processes</a> &rarr;
+        <a href="#level-3">Level 3: Internal Clean Architecture Components</a> &rarr;
+        <a href="#level-4">Level 4: Code / Runtime Sequence Flows (4A, 4B, 4C)</a>
+      </div>
+    </header>
+
+    <section class="legend">
+      <h2>Semantic Color &amp; Arrow Legend (Consistent Across All Levels)</h2>
+      <div class="legend-grid">
+        <div><span class="badge" style="background: var(--external)"></span><strong>External / Actor:</strong> End Users, Super Admins, SMTP Server</div>
+        <div><span class="badge" style="background: var(--frontend)"></span><strong>Inbound Delivery:</strong> Gin HTTP Handlers (<code>AuthHandler</code>, <code>UserHandler</code>)</div>
+        <div><span class="badge" style="background: var(--backend)"></span><strong>Backend / Domain &amp; UseCases:</strong> UseCases (<code>internal/usecase</code>), Domain Entities, Workers</div>
+        <div><span class="badge" style="background: var(--security)"></span><strong>Security / Policy:</strong> JWT/RBAC Middleware, <code>UserPolicy</code>, Bcrypt/AES</div>
+        <div><span class="badge" style="background: var(--database)"></span><strong>Data Store:</strong> PostgreSQL 16 (GORM + <code>WithTx</code>) &amp; Redis 7 Cache</div>
+        <div><span class="badge" style="background: var(--messagebus)"></span><strong>Messaging:</strong> RabbitMQ 3 Topic Exchange, Retry/DLQ, MQ Handlers</div>
+        <div><span class="badge" style="background: var(--cloud)"></span><strong>Cloud Storage:</strong> Cloudinary Avatar Storage Adapter</div>
+        <div><strong>Arrows:</strong> Solid = synchronous call &middot; Dashed = async / background / side-effect &middot; Rose = security/auth gate</div>
+      </div>
+    </section>
+
+    <section id="level-1" class="level-section">
+      <div class="level-header">
+        <h2>Level 1 — System Context</h2>
+      </div>
+      <div class="card">
+        <h3>Level 1: Go Gin Clean System Context</h3>
+        <p>
+          Shows the high-level boundary of the <strong>Go Gin Clean API</strong> and how external actors
+          (<strong>End User Client</strong> and <strong>Super Admin</strong>) interact with it over HTTPS.
+          It maps every external dependency verified in configuration: <strong>PostgreSQL</strong> (source of truth),
+          <strong>Redis Cache</strong> (5-minute cache-aside), <strong>RabbitMQ</strong> (event broker),
+          <strong>Cloudinary CDN</strong> (avatar storage), and <strong>SMTP Mail Server</strong> (transactional email).
+        </p>
+        <div class="links">
+          <a class="btn" href="level-1-context/level-1-context.html">Open Interactive Level 1 Diagram</a>
+          <a class="nav-link" href="level-1-context/candidate.json">View JSON Spec</a>
+          <span>&middot;</span>
+          <a class="nav-link" href="#level-2">Drill Down &rarr; Level 2: Containers</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="level-2" class="level-section">
+      <div class="level-header">
+        <h2>Level 2 — Containers &amp; Runtime Processes</h2>
+      </div>
+      <div class="card">
+        <h3>Level 2: Containers &amp; Runtime Processes</h3>
+        <p>
+          Zooms into the deployable containers (<code>docker-compose.yml</code> and <code>Dockerfile</code>) and the
+          concurrent runtime goroutines inside the <code>cmd/server</code> binary. It illustrates how
+          <strong>Gin HTTP Server</strong>, <strong>Outbox Worker</strong> (polling PostgreSQL every 5s with
+          <code>FOR UPDATE SKIP LOCKED</code> in <code>internal/delivery/worker</code>), and <strong>Consumer Worker</strong> (AMQP QoS=1 with retry/DLX queues)
+          coordinate via <strong>PostgreSQL 16</strong>, <strong>Redis 7 Alpine</strong>, and <strong>RabbitMQ 3</strong>,
+          alongside the standalone <strong>Migration CLI</strong> (<code>cmd/migrate</code>).
+        </p>
+        <div class="links">
+          <a class="btn" href="level-2-containers/level-2-containers.html">Open Interactive Level 2 Diagram</a>
+          <a class="nav-link" href="level-2-containers/candidate.json">View JSON Spec</a>
+          <span>&middot;</span>
+          <a class="nav-link" href="#level-1">&larr; Up to Level 1: System Context</a>
+          <span>&middot;</span>
+          <a class="nav-link" href="#level-3">Drill Down &rarr; Level 3: Internal Components</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="level-3" class="level-section">
+      <div class="level-header">
+        <h2>Level 3 — Internal Components (Clean Architecture Layers)</h2>
+      </div>
+      <div class="card">
+        <h3>Level 3: Internal Components (Clean Architecture Layers)</h3>
+        <p>
+          Maps the internal Go packages wired inside <code>internal/app.go</code> across the four Clean Architecture rings:
+          <strong>Layer 1 Domain Core</strong> (<code>Domain RBAC &amp; Policy</code>, <code>Domain Entities &amp; VOs</code>, <code>repository</code> &amp; <code>gateway</code> interfaces),
+          <strong>Layer 2 Application UseCases</strong> (<code>AuthUseCase</code>, <code>UserUseCase</code>, <code>Outbox &amp; Email UseCases</code> in <code>internal/usecase</code>),
+          <strong>Layer 3 Inbound Delivery</strong> (<code>HTTP Middleware</code>, <code>REST HTTP Handlers</code>, <code>MQ Event Handler &amp; Workers</code> in <code>internal/delivery</code>), and
+          <strong>Layer 4 Outbound Infrastructure</strong> (<code>Postgres Repositories</code>, <code>Security Adapters</code>, <code>Cache &amp; Storage Adapters</code>, <code>RabbitMQ &amp; SMTP Adapters</code>).
+        </p>
+          <a class="btn" href="level-3-components/level-3-components.html">Open Interactive Level 3 Diagram</a>
+          <a class="nav-link" href="level-3-components/candidate.json">View JSON Spec</a>
+          <span>&middot;</span>
+          <a class="nav-link" href="#level-2">&larr; Up to Level 2: Containers</a>
+          <span>&middot;</span>
+          <a class="nav-link" href="#level-4">Drill Down &rarr; Level 4: Runtime Flows</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="level-4" class="level-section">
+      <div class="level-header">
+        <h2>Level 4 — Code / Runtime Sequence Flows</h2>
+      </div>
+
+      <div class="card">
+        <h3>Level 4A: Register &amp; Transactional Outbox Runtime Flow</h3>
+        <p>
+          Traces <code>POST /api/v1/auth/register</code> from <code>AuthHandler.Register</code> into
+          <code>authUseCase.Register</code> and <code>gormTxManager.WithTx</code>, showing how
+          <code>userRepo.Create(txCtx)</code> and <code>outboxRepo.Create(txCtx)</code> commit atomically in one
+          PostgreSQL transaction. Then traces the asynchronous <code>OutboxWorker</code> polling loop,
+          <code>publisher.Publish("user.register")</code>, and <code>EmailEventHandler.HandleUserVerifyEmail</code>
+          sending the verification email via SMTP.
+        </p>
+        <div class="links">
+          <a class="btn" href="level-4-register-flow/level-4-register-flow.html">Open Interactive Flow 4A</a>
+          <a class="nav-link" href="level-4-register-flow/candidate.json">View JSON Spec</a>
+          <span>&middot;</span>
+          <a class="nav-link" href="#level-3">&larr; Up to Level 3: Internal Components</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Level 4B: Login &amp; Atomic Refresh Token Rotation Flow</h3>
+        <p>
+          Traces <code>POST /api/v1/auth/login</code> and <code>POST /api/v1/auth/refresh-token</code> through
+          <code>AuthHandler</code>, <code>authUseCase</code>, <code>JWTMaker</code>, <code>AESEncryptor</code>,
+          and <code>PostgresRefreshTokenRepository</code>. Shows how refresh tokens are AES-256-GCM encrypted before
+          storage and how token rotation wraps <code>RevokeByToken(txCtx)</code> and <code>Save(txCtx)</code> in a
+          single <code>WithTx</code> transaction so a failed save rolls back revocation.
+        </p>
+        <div class="links">
+          <a class="btn" href="level-4-login-refresh-flow/level-4-login-refresh-flow.html">Open Interactive Flow 4B</a>
+          <a class="nav-link" href="level-4-login-refresh-flow/candidate.json">View JSON Spec</a>
+          <span>&middot;</span>
+          <a class="nav-link" href="#level-3">&larr; Up to Level 3: Internal Components</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Level 4C: Two-Tier RBAC &amp; Redis Cache-Aside User Flow</h3>
+        <p>
+          Traces <code>GET /api/v1/users</code> through Tier 1 middleware (<code>AuthMiddleware.RequireAuth</code> and
+          <code>RequireRole(UserRead)</code>) and Tier 2 domain policy scoping (<code>UserPolicy.Scope</code> inside
+          <code>userUseCase.GetAllUsers</code>). Shows the role-and-actor-scoped Redis cache-aside lookup, graceful
+          fallback on cache miss/error, and SQL-injection-safe sorting via <code>SanitizeSortColumn</code> in
+          <code>PostgresUserRepository.FindAll</code>.
+        </p>
+        <div class="links">
+          <a class="btn" href="level-4-users-rbac-flow/level-4-users-rbac-flow.html">Open Interactive Flow 4C</a>
+          <a class="nav-link" href="level-4-users-rbac-flow/candidate.json">View JSON Spec</a>
+          <span>&middot;</span>
+          <a class="nav-link" href="#level-3">&larr; Up to Level 3: Internal Components</a>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
