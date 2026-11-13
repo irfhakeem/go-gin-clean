@@ -83,21 +83,28 @@ The server listens on `http://localhost:3000` by default
 
 ## System Design
 
-| #   | Layer                   | Packages                                                                                    | Responsibility                                                                                                                                    | May import                                  |
-| --- | ----------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| 1   | **Domain** (inner)      | `internal/domain/{entity, auth, permission, policy, vo}`                                    | Entities, value objects, invariants, RBAC checker & scoping policies. Zero framework deps.                                                       | stdlib, `pkg/*` only                        |
-| 2   | **Application / ports** | `internal/application/port`, `internal/application/usecase`                                 | Use cases (login, register, email verification, …) + all **port interfaces** (repositories, `TokenMaker`, `Mailer`, `Cache`, `Storage`, …) | `domain`, `dto`, `pkg/*`                    |
-| 3a  | **Inbound adapters**    | `internal/delivery/http/…` (handlers, routes, middleware, response), `internal/delivery/mq` | Translate HTTP / MQ messages → use-case calls; JSON envelope + i18n errors                                                                        | `application`, `domain`, `dto`, `pkg/*`     |
-| 3b  | **Outbound adapters**   | `internal/infrastructure/{repository, messaging, mailer, storage, security}`                | Concrete implementations of the ports (GORM, amqp09, SMTP, Cloudinary, JWT/AES/bcrypt)                                                            | `application/port`, `domain`, `pkg/*`       |
-| 4   | **Composition root**    | `internal/app.go`, `cmd/server`, `cmd/migrate`                                              | Manual constructor DI wiring everything together; HTTP server + background workers; migration CLI                                                 | everything                                  |
-| —   | **Shared kernel**       | `pkg/{config, connection, logger, message, errors, utils}`, `internal/dto`                  | Leaf utilities: config/env, i18n catalogs, `AppError`/`ConsumerError`, shared DTOs                                                                | `pkg/*` is a leaf: imports nothing internal |
+| #   | Layer                             | Packages                                                                                           | Responsibility                                                                                                                      | May import                                  |
+| --- | --------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 1   | **Domain** (inner core)           | `internal/domain/{entity, auth, permission, policy, vo, repository, gateway}`                       | Entities, value objects, invariants, RBAC & scoping policies, repository interfaces (`UserRepository`, `TxManager`), gateway contracts. | stdlib, `pkg/*` only                        |
+| 2   | **Use Cases** (application rules) | `internal/usecase`                                                                                 | Application interactors & input boundaries (`AuthUseCase`, `UserUseCase`, `EmailUseCase`, `OutboxUseCase`).                          | `domain`, `dto`, `pkg/*`                    |
+| 3   | **Interface Adapters** (driving)  | `internal/delivery/{http, mq, worker}`                                                             | Driving adapters: Gin REST handlers, routes, middleware, response envelopes, RabbitMQ event consumers, background workers.          | `usecase`, `domain`, `dto`, `pkg/*`         |
+| 4   | **Infrastructure** (driven)       | `internal/infrastructure/{repository, messaging, mailer, storage, security}`                       | Driven technical adapters implementing domain repository and gateway interfaces (GORM, amqp091, SMTP, Cloudinary, JWT/AES/bcrypt).  | `domain/repository`, `domain/gateway`, `pkg/*` |
+| 5   | **Composition root**              | `internal/app.go`, `cmd/server`, `cmd/migrate`                                                     | Manual constructor DI wiring everything together; HTTP server + background workers; migration CLI.                                 | everything                                  |
+| —   | **Shared kernel**                 | `pkg/{config, connection, logger, message, errors, utils}`, `internal/dto`                         | Leaf utilities: config/env, i18n catalogs, `AppError`/`ConsumerError`, shared request/response DTOs.                                 | `pkg/*` is a leaf: imports nothing internal |
 
 **Design decisions worth calling out**
 
-- **Ports live next to use cases** (`internal/application/port`) so the
-  application layer is self-contained: it defines _what_ it needs;
-  `infrastructure/` defines _how_. `internal/app.go` is the only place where
-  an adapter is injected into a use case — no DI framework.
+- **Domain owns the interfaces (Inversion of Control)**: Repository interfaces
+  (`internal/domain/repository`) and infrastructure gateway interfaces
+  (`internal/domain/gateway`) live directly in the domain layer. The core
+  defines _what_ contracts it requires; `internal/infrastructure/` defines
+  _how_ they are satisfied (PostgreSQL, Redis, SMTP, RabbitMQ). `internal/app.go`
+  is the single composition root that injects infrastructure into use cases and
+  use cases into delivery handlers — no reflection or DI container.
+- **Centralized test separation (`test/`)**: Production packages in `internal/`
+  and `pkg/` contain zero `*_test.go` files. All unit tests reside in
+  `test/unit/` and assert against thread-safe, inspectable in-memory mocks in
+  `test/mock/` implementing domain repository and gateway interfaces.
 - **`AppError` vs `ConsumerError`**: the HTTP side wraps failures into
   `AppError{type, i18n-key, cause}` which `delivery/http/response` renders
   into a consistent localized envelope; the MQ side returns
@@ -106,7 +113,6 @@ The server listens on `http://localhost:3000` by default
 - **Domain stays pure**: `entity.User` holds invariants (`VerifyEmail`,
   `SetPassword`, …); validation rules for _requests_ live in
   `internal/dto/validator` so domain types never grow HTTP concerns.
-
 ### Architecture & Runtime Visualization (`docs/architecture/`)
 
 Interactive multi-level architecture and sequence diagrams (generated with Archify and pinned to source lines) are available in [`docs/architecture/index.html`](docs/architecture/index.html):
@@ -133,31 +139,37 @@ cmd/
   server/            entrypoint (HTTP server + background workers)
   migrate/           migration CLI (up | down | force | version | create)
 internal/
-  app.go             composition root (manual wiring)
+  app.go             composition root (manual DI wiring)
   dto/               shared request/response DTOs + request validation
-  domain/            LAYER 1: core business rules (no framework deps)
-    entity/          domain objects
+  domain/            LAYER 1: enterprise business rules & interfaces (zero external deps)
+    entity/          domain entities & invariants
     auth/            token claims
-    permission/      RBAC permission definitions and role-permission matrix
+    permission/      RBAC permission definitions & role-permission matrix
     policy/          data scoping policies (ScopeAll, ScopeFiltered, ScopeNone)
     vo/              value objects (role, gender, …)
-  application/
-    port/            outbound port interfaces (repo, mq, mailer, jwt, cache, …)
-    usecase/         application use cases
-  delivery/
+    repository/      repository interfaces & query filter params (UserRepository, TxManager, …)
+    gateway/         infrastructure service interfaces (Mailer, Cache, Storage, Publisher, Security)
+  usecase/           LAYER 2: application business rules & input boundaries
+    auth_usecase.go  authentication & session orchestration
+    user_usecase.go  user management & permission orchestration
+    email_usecase.go transactional email delivery
+    outbox_usecase.go outbox event publishing & batch processing
+  delivery/          LAYER 3: interface adapters (driving)
     http/            REST API (handlers, routes, middleware, response envelope)
-    mq/              RabbitMQ consumers (email, events)
-  infrastructure/    outbound adapters implementing the ports
-    repository/      GORM repositories (users, refresh tokens, outbox)
-    messaging/       RabbitMQ publisher/consumer (topology, retry, DLX)
+    mq/              RabbitMQ event consumers (email events)
+    worker/          background workers (outbox dispatcher, consumer loop)
+  infrastructure/    LAYER 4: frameworks & drivers (driven)
+    repository/      PostgreSQL GORM implementations with atomic transactions
+    messaging/       RabbitMQ publisher and consumer topology (retry, DLX)
     mailer/          SMTP email service + HTML templates
     storage/         Cloudinary file storage
-    security/        JWT, AES (GCM + CTR), bcrypt
-  worker/            background jobs (outbox dispatcher, email consumer)
+    security/        JWT, AES-256-GCM, bcrypt
 migrations/          plain-SQL migrations
 pkg/                 leaf utilities: config, connection, logger, message (i18n), errors, utils
+test/                test separation & mocking architecture
+  mock/              reusable in-memory mocks for all domain repository & gateway interfaces
+  unit/              centralized unit test suite across use cases, security, validation, & repositories
 ```
-
 ## Data & Caching Strategy
 
 - **Sessions**: access token (short-lived JWT) in the `Authorization` header;
@@ -234,17 +246,17 @@ behind TLS (CORS + `Secure` cookies are configured accordingly).
   live-reload: `air` — rebuilds `cmd/server` on changes.
 - Migrations are plain SQL in `migrations/`; scaffold one with
   `go run cmd/migrate create your_migration_name`.
-- Ports and adapters: to swap an implementation (e.g. Redis → in-memory cache),
-  implement the matching interface in `internal/application/port` and change
-  the single wiring line in `internal/app.go`.
+- Clean architecture interfaces: to swap an implementation (e.g. Redis → in-memory cache),
+  implement the matching gateway interface in `internal/domain/gateway` (or repository in
+  `internal/domain/repository`) and update the single wiring line in `internal/app.go`.
 
 ## Contributing
 
 Contributions are welcome!
 
 1. Fork the repo and create a branch: `git checkout -b feat/my-feature`
-2. Keep the dependency rule intact — new infrastructure must implement a port;
-   use cases must not import infrastructure.
+2. Keep the dependency rule intact — new infrastructure must implement a domain
+   repository or gateway interface; use cases must not import infrastructure.
 3. Run `gofmt -s` and `go vet ./...` before pushing.
 4. Open a PR with a clear description of the change.
 
