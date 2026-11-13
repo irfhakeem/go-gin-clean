@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/usecase"
 	"go-gin-clean/internal/dto/event"
 
 	pkgerrors "go-gin-clean/pkg/errors"

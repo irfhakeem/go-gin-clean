@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"go-gin-clean/internal/application/usecase"
+	"go-gin-clean/internal/usecase"
 	"go-gin-clean/pkg/logger"
 
 	"go.uber.org/zap"

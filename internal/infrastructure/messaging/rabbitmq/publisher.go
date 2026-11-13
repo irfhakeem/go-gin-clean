@@ -6,7 +6,7 @@ import (
 	"log"
 	"sync"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/domain/gateway"
 	"go-gin-clean/pkg/config"
 
 	amqp091 "github.com/rabbitmq/amqp091-go"
@@ -19,7 +19,7 @@ type publisher struct {
 	mu   sync.Mutex
 }
 
-func NewPublisher(conn *amqp091.Connection, cfg *config.RabbitMQConfig) port.Publisher {
+func NewPublisher(conn *amqp091.Connection, cfg *config.RabbitMQConfig) gateway.Publisher {
 	ch, err := conn.Channel()
 	if err != nil {
 		return nil
@@ -31,7 +31,7 @@ func NewPublisher(conn *amqp091.Connection, cfg *config.RabbitMQConfig) port.Pub
 	}
 }
 
-var _ port.Publisher = (*publisher)(nil)
+var _ gateway.Publisher = (*publisher)(nil)
 
 func (p *publisher) Publish(routingKey string, body []byte) error {
 	p.mu.Lock()

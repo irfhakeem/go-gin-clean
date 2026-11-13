@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/domain/gateway"
+	"go-gin-clean/internal/domain/repository"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
@@ -19,15 +20,17 @@ type OutboxUseCase interface {
 	ResetStuck(ctx context.Context, stuckDuration time.Duration) error
 }
 
+var _ OutboxUseCase = (*outboxUseCase)(nil)
+
 type outboxUseCase struct {
-	outboxRepo port.OutboxRepository
-	publisher  port.Publisher
+	outboxRepo repository.OutboxRepository
+	publisher  gateway.Publisher
 	cfg        *config.RabbitMQConfig
 }
 
 func NewOutboxUseCase(
-	outboxRepo port.OutboxRepository,
-	publisher port.Publisher,
+	outboxRepo repository.OutboxRepository,
+	publisher gateway.Publisher,
 	cfg *config.RabbitMQConfig,
 ) OutboxUseCase {
 	return &outboxUseCase{

@@ -2,12 +2,12 @@ package worker
 
 import (
 	"context"
-	"go-gin-clean/internal/application/usecase"
+
+	"go-gin-clean/internal/usecase"
+	mq "go-gin-clean/internal/delivery/mq"
 	"go-gin-clean/internal/infrastructure/messaging/rabbitmq"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
-
-	mq "go-gin-clean/internal/delivery/mq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"

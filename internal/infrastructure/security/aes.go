@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/domain/gateway"
 	"go-gin-clean/pkg/config"
 )
 
@@ -18,7 +18,7 @@ type aesEncryptor struct {
 	key [32]byte
 }
 
-func NewAESEncryptor(cfg *config.AESConfig) port.Encryptor {
+func NewAESEncryptor(cfg *config.AESConfig) gateway.Encryptor {
 	// Standardize to 32-byte AES-256 key using SHA-256
 	key := sha256.Sum256([]byte(cfg.Key))
 	return &aesEncryptor{key: key}

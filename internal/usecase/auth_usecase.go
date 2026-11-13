@@ -6,7 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/domain/gateway"
+	"go-gin-clean/internal/domain/repository"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/internal/dto"
 	"go-gin-clean/internal/dto/event"
@@ -29,26 +30,28 @@ type AuthUseCase interface {
 	ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error
 }
 
+var _ AuthUseCase = (*authUseCase)(nil)
+
 type authUseCase struct {
-	txManager        port.TransactionManager
-	userRepo         port.UserRepository
-	refreshTokenRepo port.RefreshTokenRepository
+	txManager        repository.TransactionManager
+	userRepo         repository.UserRepository
+	refreshTokenRepo repository.RefreshTokenRepository
 	outboxUseCase    OutboxUseCase
 
-	jwt       port.TokenMaker
-	hasher    port.Hasher
-	encryptor port.Encryptor
+	jwt       gateway.TokenMaker
+	hasher    gateway.Hasher
+	encryptor gateway.Encryptor
 	cfg       *config.ServerConfig
 }
 
 func NewAuthUseCase(
-	txManager port.TransactionManager,
-	userRepo port.UserRepository,
-	refreshTokenRepo port.RefreshTokenRepository,
+	txManager repository.TransactionManager,
+	userRepo repository.UserRepository,
+	refreshTokenRepo repository.RefreshTokenRepository,
 	outboxUseCase OutboxUseCase,
-	jwt port.TokenMaker,
-	hasher port.Hasher,
-	encryptor port.Encryptor,
+	jwt gateway.TokenMaker,
+	hasher gateway.Hasher,
+	encryptor gateway.Encryptor,
 	cfg *config.ServerConfig,
 ) AuthUseCase {
 	return &authUseCase{

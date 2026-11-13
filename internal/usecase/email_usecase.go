@@ -3,7 +3,7 @@ package usecase
 import (
 	"fmt"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/domain/gateway"
 	"go-gin-clean/pkg/config"
 	"go-gin-clean/pkg/logger"
 
@@ -15,12 +15,14 @@ type EmailUseCase interface {
 	SendResetPasswordEmail(to, name, url string) error
 }
 
+var _ EmailUseCase = (*emailUseCase)(nil)
+
 type emailUseCase struct {
-	mailer port.Mailer
+	mailer gateway.Mailer
 	cfg    *config.ServerConfig
 }
 
-func NewEmailUseCase(mailer port.Mailer, cfg *config.ServerConfig) EmailUseCase {
+func NewEmailUseCase(mailer gateway.Mailer, cfg *config.ServerConfig) EmailUseCase {
 	return &emailUseCase{
 		mailer: mailer,
 		cfg:    cfg,

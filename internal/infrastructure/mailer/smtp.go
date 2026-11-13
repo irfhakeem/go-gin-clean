@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"html/template"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/domain/gateway"
 	"go-gin-clean/pkg/config"
 
 	"gopkg.in/gomail.v2"
@@ -24,7 +24,7 @@ type smtpMailer struct {
 	dialer EmailDialer
 }
 
-func NewSMTPMailer(cfg *config.EmailConfig) port.Mailer {
+func NewSMTPMailer(cfg *config.EmailConfig) gateway.Mailer {
 	dialer := gomail.NewDialer(
 		cfg.Host,
 		cfg.Port,

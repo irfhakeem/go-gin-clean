@@ -9,7 +9,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"go-gin-clean/internal/application/port"
+	"go-gin-clean/internal/domain/gateway"
+	"go-gin-clean/internal/domain/repository"
 	"go-gin-clean/internal/domain/entity"
 	"go-gin-clean/internal/domain/policy"
 	"go-gin-clean/internal/dto"
@@ -34,29 +35,31 @@ type UserUseCase interface {
 	DeleteUser(ctx context.Context, actor policy.Actor, id string) error
 }
 
+var _ UserUseCase = (*userUseCase)(nil)
+
 type userUseCase struct {
 	policy    policy.UserPolicy
-	txManager port.TransactionManager
+	txManager repository.TransactionManager
 
-	userRepo         port.UserRepository
-	refreshTokenRepo port.RefreshTokenRepository
+	userRepo         repository.UserRepository
+	refreshTokenRepo repository.RefreshTokenRepository
 	outboxUseCase    OutboxUseCase
-	hasher  port.Hasher
-	storage port.Storage
-	cache   port.Cache
+	hasher  gateway.Hasher
+	storage gateway.Storage
+	cache   gateway.Cache
 
 	cfg *config.ServerConfig
 }
 
 func NewUserUseCase(
 	policy policy.UserPolicy,
-	txManager port.TransactionManager,
-	userRepo port.UserRepository,
-	refreshTokenRepo port.RefreshTokenRepository,
+	txManager repository.TransactionManager,
+	userRepo repository.UserRepository,
+	refreshTokenRepo repository.RefreshTokenRepository,
 	outboxUseCase OutboxUseCase,
-	hasher port.Hasher,
-	storage port.Storage,
-	cache port.Cache,
+	hasher gateway.Hasher,
+	storage gateway.Storage,
+	cache gateway.Cache,
 	cfg *config.ServerConfig,
 ) UserUseCase {
 	return &userUseCase{
@@ -116,7 +119,7 @@ func (u *userUseCase) GetAllUsers(ctx context.Context, actor policy.Actor, query
 		return dto.NewPaginationResponse([]dto.UserInfo{}, page, limit, 0), nil
 	}
 
-	params := port.FindAllUsersParams{
+	params := repository.FindAllUsersParams{
 		Limit:    query.PerPage,
 		Offset:   offset,
 		Search:   query.Search,
